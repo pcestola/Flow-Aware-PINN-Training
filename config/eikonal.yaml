@@ -1,0 +1,35 @@
+# config/default.yaml
+name: eikonal_circle
+
+# wave | heat | laplace | eikonal
+equation: "eikonal"
+
+# simple | siren
+model:
+  type: "simple"
+  dims: [2, 128, 128, 128, 128, 1]
+
+mesh:
+  file: "meshes/circle.obj"
+  steps: 1
+  time_axis: -1
+  bulk_points: 3000
+  boundary_points: 1000
+  initial_points: 0
+
+training:
+  scheduler: false
+  epochs: 6000
+  lr: 1e-3
+  weights:
+    bulk: 1.0
+    initial: 0.0
+    boundary: 1.0
+
+checkpoint:
+  enabled: true
+  interval: 100
+
+logging:
+  enabled: true
+  level: "INFO"
