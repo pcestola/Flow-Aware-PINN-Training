@@ -1,24 +1,13 @@
 # scripts/train.py
-# TODO: Aggiungi uno scheduler per il training (si puo scegliere
-#       in maniera particolare nel caso della domain deocmposition?)
-# TODO: Dal punto di vista teorico argomento l'andamento concorrente della loss
-#       chi domina? quando? perche? (fare la media rimedia al class umbalance?)
-#       Le geometrie complesse suggeriscono di: imparare prima boundary e initial
+# TODO: Le geometrie complesse suggeriscono di: imparare prima boundary e initial
 #       e poi bulk (mantenendo stabili le altre due).
-# TODO: automatizza, in output metti tutto, anche la loss etc...
-# TODO: ripensa come costruisci e carichi i dati di boundary e initial
-#       attualmente nel file yaml non usi "initial_points"
 
-# NOTE: Attualmente il rettangolo con dato iniziale esponenziale converge lentamente
-#       e mostra solo un ramo di propagazione dell'onda (questa cosa era già)
-#       successa, come avevamo risolto?
-
-# TODO: La boundary_loss deve avere peso decrescente che tende ad 1.0
 import os
 import yaml
 import torch
 import logging
 import argparse
+import subprocess
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -48,9 +37,9 @@ def load_config(path):
         return yaml.safe_load(f)
 
 
-def setup_logging(log_cfg, path):
+def setup_logging(log_cfg, path, steps):
     os.makedirs(path, exist_ok=True)
-    log_file = os.path.join(path, "train.log")
+    log_file = os.path.join(path, f"train_{steps}.log")
     logging.basicConfig(
         filename=log_file,
         level=getattr(logging, log_cfg["level"]),
@@ -68,27 +57,50 @@ def get_equation(name:str):
         raise ValueError(f"Equazione sconosciuta: {name}")
     return eqs[name]()
 
+def get_free_gpu():
+    try:
+        output = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,nounits,noheader"],
+            encoding="utf-8"
+        )
+        memory_usage = [int(x) for x in output.strip().split("\n")]
+        del memory_usage[2]
+        free_gpu = memory_usage.index(min(memory_usage))
+        return free_gpu
+    except Exception as e:
+        print(f"Errore nel controllo GPU: {e}")
+        return 0
+
 def main():
     args = parse_args()
     cfg = load_config(args.config)
 
     # Cartella di salvataggio
     save_dir = os.path.join("results", cfg["name"])
-    ckpt_dir = os.path.join(save_dir, "checkpoint")
+    log_dir = os.path.join(save_dir, "logging")
+    img_dir = os.path.join(save_dir, "images")
     os.makedirs(save_dir, exist_ok=True)
-    os.makedirs(ckpt_dir, exist_ok=True)
+    os.makedirs(log_dir, exist_ok=True)
+    os.makedirs(img_dir, exist_ok=True)
+
+    if cfg["checkpoint"]["enabled"]:
+        ckpt_dir = os.path.join(save_dir, "checkpoint")
+        os.makedirs(ckpt_dir, exist_ok=True)
+    else:
+        ckpt_dir = None
 
     # Logging locale
     if cfg["logging"]["enabled"]:
-        setup_logging(cfg["logging"], save_dir)
+        setup_logging(cfg["logging"], log_dir, cfg["mesh"]["steps"])
         logging.info("Inizio training")
 
     if torch.cuda.is_available():
-        device = "cuda"
-        torch.cuda.init()
-        torch.cuda.current_device()
+        gpu_id = get_free_gpu()
+        device = torch.device(f"cuda:{gpu_id}")
+        logging.info('Using GPU: {device}')
     else:
-        device = "cpu"
+        device = torch.device("cpu")
+        logging.info('Using CPU')
 
     # Caricamento dati mesh
     mesh, bulk_points, boundary_points, initial_points, indices, scheduler = mesh_preprocessing(
@@ -160,7 +172,12 @@ def main():
     '''
         TRAINING
     '''
-    trainer = TrainerStep(pinn, device=torch.device('cuda:0'))
+    trainer = TrainerStep(
+        pinn,
+        device=torch.device('cuda:0'),
+        ckpt_dir=ckpt_dir,
+        ckpt_interval = cfg["checkpoint"]["interval"]
+    )
 
     trainer.train(
         bulk_data=bulk_data,
@@ -168,42 +185,17 @@ def main():
         init_data=initial_data,
         indices=indices,
         weights=cfg["training"]["weights"],
-        epochs=cfg["training"]["epochs"],
-        steps=cfg["mesh"]["steps"],
-        lr_start=1e-2
-    )
-
-    '''
-    scheduler_enabled = cfg["training"].get("use_scheduler", False)
-
-    trainer = ProgressiveTrainer(
-        pinn,
-        scheduler,
-        device,
-        ckpt_dir=ckpt_dir,
-        ckpt_interval=int(cfg["checkpoint"]["interval"])
-    )
-    
-    trainer.train(
-        bulk_data=bulk_data,
-        boundary_data=boundary_data,
-        initial_data=initial_data,
-        indices=indices,
-        weights=cfg["training"]["weights"],
         epochs=int(cfg["training"]["epochs"]),
-        lr=float(cfg["training"]["lr"]),
-        ckpt=cfg["checkpoint"]["enabled"],
-        scheduler=scheduler_enabled
+        steps=int(cfg["mesh"]["steps"]),
+        lr_start=float(cfg["training"]["lr"]),
+        ckpt=cfg["checkpoint"]["enabled"]
     )
-    '''
     
     # Show results
     solution = pinn.network(torch.tensor(mesh.vertices, dtype=torch.float32, device=device))
     solution = solution.detach().cpu().flatten().numpy()
 
-    # TODO: aggiungi un plot 3D
-    visualize_scalar_field(mesh, solution)
-    
+    visualize_scalar_field(mesh, solution, save_path=os.path.join(img_dir,f'solution_{cfg["mesh"]["steps"]}'))
 
 '''
     Implementa un sistema che aggiorna automaticamente i pesi dei termini di loss durante il training, per esempio:

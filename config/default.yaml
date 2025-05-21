@@ -11,7 +11,7 @@ model:
 
 mesh:
   file: "meshes/rectangle.obj"
-  steps: 64
+  steps: 32
   time_axis: 0
   bulk_points: 1500
   boundary_points: 160
@@ -27,7 +27,7 @@ training:
     initial: 1.0
 
 checkpoint:
-  enabled: false
+  enabled: true
   interval: 100
 
 logging:

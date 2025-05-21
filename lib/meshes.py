@@ -318,7 +318,7 @@ def visualize_dataset(
     plt.tight_layout()
     plt.show()
 
-def visualize_scalar_field(mesh, s, face=False, cmap='bwr'):
+def visualize_scalar_field(mesh, s, face=False, cmap='bwr', save_path=None):
     v = mesh.vertices[:, :2]
     f = mesh.faces
     if face:
@@ -327,7 +327,13 @@ def visualize_scalar_field(mesh, s, face=False, cmap='bwr'):
         plt.tripcolor(v[:,0], v[:,1], f, s, cmap=cmap, edgecolors='k')
     plt.colorbar()
     plt.axis('equal')
-    plt.show()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
+
 
 '''
     MAIN

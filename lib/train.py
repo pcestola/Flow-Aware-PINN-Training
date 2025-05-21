@@ -150,7 +150,85 @@ class Trainer:
     OLD CODE
 '''
 
+# TODO: non ha senso salvare quando la loss è minimizzata
+# salva solo all'ultimo stadio oppure usa una loss calcolata
+# su tutto quanto il dataset
 class TrainerStep():
+    def __init__(self, pinn, device=None, ckpt_dir=None, ckpt_interval=100):
+        self.pinn = pinn
+        self.device = device if device else torch.device('cpu')
+        self.ckpt_dir = ckpt_dir
+        self.ckpt_interval = ckpt_interval
+        self.logger = logging.getLogger(__name__)
+
+    def divide_epochs_exponential_growth(self, epochs:int, steps:int):
+        base = np.exp(np.linspace(0, 1, steps))
+        base = base / base.sum()
+        scaled_parts = (base * epochs).round().astype(int)
+        adjustment = epochs - scaled_parts.sum()
+        scaled_parts[-1] += adjustment
+        scaled_parts = list(scaled_parts.cumsum())
+        scaled_parts.insert(0,0)
+        return scaled_parts
+
+    def train(self,
+              bulk_data:Tuple[torch.Tensor],
+              bdry_data:Tuple[torch.Tensor],
+              init_data:Tuple[torch.Tensor],
+              indices:list,
+              weights:dict,
+              epochs:int,
+              steps:int,
+              lr_start:float,
+              ckpt:bool):
+        
+        ckpt_path = os.path.join(self.ckpt_dir,f"weights_{steps}.pt")
+
+        decomposition_epochs = self.divide_epochs_exponential_growth(epochs, steps)
+        
+        optimizer = torch.optim.Adam(self.pinn.parameters(), lr=lr_start)
+        scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=steps)
+
+        self.logger.info(f"{'Epoch':>5} {'Step':>6} {'Total loss':>12} {'Bulk Loss':>12} {'Boundary Loss':>15} {'Initial Loss':>13} {'Learning rate':>14}")
+        
+        min_loss = inf
+        for step in range(steps):
+            
+            bulk_data_temp = tuple(x[:indices[step]] for x in bulk_data)
+
+            for epoch in range(decomposition_epochs[step],decomposition_epochs[step+1]):
+
+                optimizer.zero_grad()
+                
+                bulk_loss = self.pinn.bulk_loss(bulk_data_temp)
+                total_loss = weights.get('bulk',1.0) * bulk_loss
+
+                if bdry_data is not None:
+                    boundary_loss = self.pinn.boundary_loss(bdry_data)
+                    total_loss += weights.get('boundary',1.0) * boundary_loss
+                else:
+                    boundary_loss = torch.tensor(0.0)
+
+                if init_data is not None:
+                    initial_loss = self.pinn.initial_loss(init_data)
+                    total_loss += weights.get('initial',1.0) * initial_loss
+                else:
+                    initial_loss = torch.tensor(0.0)
+
+                total_loss.backward()
+                optimizer.step()
+
+                if epoch % 100 == 0:
+                    self.logger.info(f"{epoch:5d} {step:6d} {total_loss.item():12.6f} {bulk_loss.item():12.6f} {boundary_loss.item():15.6f} {initial_loss.item():13.6f} {scheduler.get_last_lr()[0]:14.6f}")
+                
+                if ckpt and total_loss.item() < min_loss and (epoch % self.ckpt_interval == 0 or epoch == epochs):
+                    min_loss = total_loss.item()
+                    torch.save(self.pinn.state_dict(), ckpt_path)
+
+            scheduler.step()
+
+
+class TrainerStepOLD():
     def __init__(self, pinn, device=None):
         self.pinn = pinn
         self.device = device if device else torch.device('cpu')
@@ -177,15 +255,17 @@ class TrainerStep():
         
         decomposition_epochs = self.divide_epochs_exponential_growth(epochs, steps)
         
-        optimizer = torch.optim.Adam(self.pinn.parameters(), lr=lr_start)
-        scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=steps)
+        #optimizer = torch.optim.Adam(self.pinn.parameters(), lr=lr_start)
+        #scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=steps)
 
-        print(f"Epoch\tStep\tScheduler\tTotal loss\tBulk Loss\tBoundary Loss\tInitial Loss")
+        print(f"Epoch\tStep\tLRate\tTotal loss\tBulk Loss\tBoundary Loss\tInitial Loss")
         
         for step in range(steps):
             
             bulk_data_temp = tuple(x[:indices[step]] for x in bulk_data)
-            
+
+            optimizer = torch.optim.Adam(self.pinn.parameters(), lr=lr_start)
+
             for epoch in range(decomposition_epochs[step],decomposition_epochs[step+1]):
 
                 optimizer.zero_grad()
@@ -209,6 +289,7 @@ class TrainerStep():
                 optimizer.step()
 
                 if epoch % 100 == 0:
-                    print(f"{epoch}\t{step:4}\t{scheduler.get_lr():.6f}\t{total_loss.item():.6f}\t{bulk_loss.item():.6f}\t{boundary_loss.item():.6f}\t{initial_loss.item():.6f}")
+                    print(f"{epoch}\t{step:4}\t{lr_start:.6f}\t{total_loss.item():.6f}\t{bulk_loss.item():.6f}\t{boundary_loss.item():.6f}\t{initial_loss.item():.6f}")
 
-            scheduler.step()
+            #scheduler.step()
+            lr_start -= 9e-3/steps
