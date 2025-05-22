@@ -182,7 +182,8 @@ class TrainerStep():
               lr_start:float,
               ckpt:bool):
         
-        ckpt_path = os.path.join(self.ckpt_dir,f"weights_{steps}.pt")
+        if ckpt:
+            ckpt_path = os.path.join(self.ckpt_dir,f"weights_{steps}.pt")
 
         decomposition_epochs = self.divide_epochs_exponential_growth(epochs, steps)
         
@@ -192,6 +193,7 @@ class TrainerStep():
         self.logger.info(f"{'Epoch':>5} {'Step':>6} {'Total loss':>12} {'Bulk Loss':>12} {'Boundary Loss':>15} {'Initial Loss':>13} {'Learning rate':>14}")
         
         min_loss = inf
+        losses = list()
         for step in range(steps):
             
             bulk_data_temp = tuple(x[:indices[step]] for x in bulk_data)
@@ -219,13 +221,23 @@ class TrainerStep():
                 optimizer.step()
 
                 if epoch % 100 == 0:
+                    
+                    self.pinn.eval()
+                    bulk_loss = self.pinn.bulk_loss(bulk_data)
+                    total_loss = weights.get('bulk',1.0) * bulk_loss + weights.get('boundary',1.0) * boundary_loss + weights.get('initial',1.0) * initial_loss
+                    self.pinn.train()
+
+                    if ckpt and total_loss.item() < min_loss:
+                        min_loss = total_loss.item()
+                        torch.save(self.pinn.state_dict(), ckpt_path)
+                    
+                    losses.append(total_loss.item())
+
                     self.logger.info(f"{epoch:5d} {step:6d} {total_loss.item():12.6f} {bulk_loss.item():12.6f} {boundary_loss.item():15.6f} {initial_loss.item():13.6f} {scheduler.get_last_lr()[0]:14.6f}")
-                
-                if ckpt and total_loss.item() < min_loss and (epoch % self.ckpt_interval == 0 or epoch == epochs):
-                    min_loss = total_loss.item()
-                    torch.save(self.pinn.state_dict(), ckpt_path)
 
             scheduler.step()
+
+        return losses
 
 
 class TrainerStepOLD():

@@ -5,6 +5,7 @@
 import os
 import yaml
 import torch
+import pickle
 import logging
 import argparse
 import subprocess
@@ -28,6 +29,9 @@ def parse_args():
     parser.add_argument(
         "--preview", action="store_true",
         help="Visualizza i grafici"
+    )
+    parser.add_argument(
+        "--steps", type=int, default=0
     )
     return parser.parse_args()
 
@@ -57,23 +61,33 @@ def get_equation(name:str):
         raise ValueError(f"Equazione sconosciuta: {name}")
     return eqs[name]()
 
-def get_free_gpu():
+def get_free_gpu(exclude_gpu=2):
     try:
         output = subprocess.check_output(
             ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,nounits,noheader"],
             encoding="utf-8"
         )
         memory_usage = [int(x) for x in output.strip().split("\n")]
-        del memory_usage[2]
-        free_gpu = memory_usage.index(min(memory_usage))
+
+        indexed_usage = [(i, mem) for i, mem in enumerate(memory_usage) if i != exclude_gpu]
+
+        if not indexed_usage:
+            print("Nessuna GPU disponibile tranne quella esclusa.")
+            return None
+
+        free_gpu = min(indexed_usage, key=lambda x: x[1])[0]
         return free_gpu
+
     except Exception as e:
         print(f"Errore nel controllo GPU: {e}")
-        return 0
+        return None
 
 def main():
     args = parse_args()
     cfg = load_config(args.config)
+
+    if args.steps > 0:
+        cfg["decomposition"]["steps"] = args.steps
 
     # Cartella di salvataggio
     save_dir = os.path.join("results", cfg["name"])
@@ -91,13 +105,13 @@ def main():
 
     # Logging locale
     if cfg["logging"]["enabled"]:
-        setup_logging(cfg["logging"], log_dir, cfg["mesh"]["steps"])
+        setup_logging(cfg["logging"], log_dir, cfg["decomposition"]["steps"])
         logging.info("Inizio training")
 
     if torch.cuda.is_available():
         gpu_id = get_free_gpu()
         device = torch.device(f"cuda:{gpu_id}")
-        logging.info('Using GPU: {device}')
+        logging.info(f'Using GPU: {device}')
     else:
         device = torch.device("cpu")
         logging.info('Using CPU')
@@ -106,8 +120,9 @@ def main():
     mesh, bulk_points, boundary_points, initial_points, indices, scheduler = mesh_preprocessing(
         path = cfg["mesh"]["file"],
         epochs = cfg["training"]["epochs"],
-        steps = cfg["mesh"]["steps"],
-        time_axis = cfg["mesh"]["time_axis"],
+        steps = cfg["decomposition"]["steps"],
+        time_axis = cfg["decomposition"]["time_axis"],
+        boundary_type = cfg["decomposition"]["type"],
         bulk_n = cfg["mesh"]["bulk_points"],
         boundary_n = cfg["mesh"]["boundary_points"],
         init_n = cfg["mesh"]["initial_points"],
@@ -128,6 +143,9 @@ def main():
 
     # Boundary
     boundary_value = np.zeros_like(boundary_points[:,0:1])
+    mask = boundary_points[:,1]==2.0
+    boundary_value[mask,:] = np.sin(np.pi*boundary_points[mask,0:1])
+    #boundary_value[boundary_points[:,0:1]**2+boundary_points[:,1:2]**2<=0.2]=1.0
     boundary_data = (
         torch.from_numpy(boundary_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
         torch.from_numpy(boundary_points[:, 1:2]).to(device=device, dtype=torch.float32).requires_grad_(),        
@@ -137,7 +155,7 @@ def main():
 
     # Initial
     if not initial_points is None:
-        initial_value = np.exp(-4*initial_points[:,1:2]**2)
+        initial_value = np.zeros_like(initial_points[:,0:1]) #np.exp(-4*initial_points[:,1:2]**2)
         initial_vel = np.zeros_like(initial_value)
         initial_data = (
             torch.from_numpy(initial_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
@@ -179,14 +197,14 @@ def main():
         ckpt_interval = cfg["checkpoint"]["interval"]
     )
 
-    trainer.train(
+    losses = trainer.train(
         bulk_data=bulk_data,
         bdry_data=boundary_data,
         init_data=initial_data,
         indices=indices,
         weights=cfg["training"]["weights"],
         epochs=int(cfg["training"]["epochs"]),
-        steps=int(cfg["mesh"]["steps"]),
+        steps=int(cfg["decomposition"]["steps"]),
         lr_start=float(cfg["training"]["lr"]),
         ckpt=cfg["checkpoint"]["enabled"]
     )
@@ -195,7 +213,10 @@ def main():
     solution = pinn.network(torch.tensor(mesh.vertices, dtype=torch.float32, device=device))
     solution = solution.detach().cpu().flatten().numpy()
 
-    visualize_scalar_field(mesh, solution, save_path=os.path.join(img_dir,f'solution_{cfg["mesh"]["steps"]}'))
+    visualize_scalar_field(mesh, solution, save_path=os.path.join(img_dir,f'solution_{cfg["decomposition"]["steps"]}'))
+
+    with open(os.path.join(log_dir,f'loss_{cfg["decomposition"]["steps"]}.pkl'), "wb") as f:
+        pickle.dump(losses, f)
 
 '''
     Implementa un sistema che aggiorna automaticamente i pesi dei termini di loss durante il training, per esempio:

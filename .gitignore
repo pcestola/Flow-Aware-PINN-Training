@@ -1,3 +1,6 @@
 .old
 .old2
 results
+lib/meshes_old.py
+run.sh
+analyze.py

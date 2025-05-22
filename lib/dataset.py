@@ -358,4 +358,4 @@ def plot_generated_data_3d(bulk_data, boundary_data, initial_data, figsize=(10, 
     ax.set_title('Dati al Bordo e Iniziali')
     ax.legend()
 
-    plt.show()
+    plt.savefig('./3d.png', dpi=300, bbox_inches='tight')

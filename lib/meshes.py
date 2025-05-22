@@ -6,6 +6,8 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from collections import defaultdict
 import point_cloud_utils as pcu
+from scipy.spatial import cKDTree
+from matplotlib import cm
 
 # https://fwilliams.info/point-cloud-utils/sections/mesh_sampling/#:~:text=at%20the%20points.-,Generating%20blue%2Dnoise%20random%20samples%20on%20a%20mesh,are%20separated%20by%20some%20radius.&text=Generating%20blue%20noise%20samples%20on,a%20target%20radius%20(right).
 
@@ -204,49 +206,66 @@ def get_progressive_dataset(
     epochs: int = 100,
     steps: int = 10,
     time_axis: int = -1,
+    boundary_type: str = "all",
     bulk_n: int = 1000,
     boundary_n: int = 100,
     init_n: int = 0,
     preview=False):
 
     boundary = get_topological_boundary(mesh)
-    
+
     if time_axis >= 0:
         boundary_classes = classify_boundary(mesh, time_axis=time_axis)
 
-        if preview:
-            visualize_boundary(mesh, boundary, boundary_classes)
-        
-        initial_boundary = boundary[boundary_classes==0]
-        boundary = boundary[boundary_classes==1]
+        #if preview:
+            #visualize_boundary(mesh, boundary, boundary_classes)
 
-        initial_points = sample_points_on_boundary(mesh, initial_boundary, init_n)
-        boundary_points = sample_points_on_boundary(mesh, boundary, boundary_n)
-
-        subs, sched = progressive_domain_decomposition(
-            mesh, initial_boundary, epochs, steps, 'linear', True
-        )
+        initial_boundary = boundary[boundary_classes == 0]
+        boundary = boundary[boundary_classes == 1]
     else:
-        if preview:
-            visualize_boundary(mesh, boundary, np.zeros(boundary.shape[0]))
+        #if preview:
+            #visualize_boundary(mesh, boundary, np.zeros(boundary.shape[0]))
+        initial_boundary = None
 
+    # 1. Generazione dei punti bulk sull'intero dominio
+    bulk_points = sample_points_on_mesh_poisson_disk(mesh, bulk_n)
+
+    # 2. Mappa di distanza geodetica su tutti i vertici
+    if boundary_type == "init":
+        distance_map = get_geodesic_distance(mesh, initial_boundary)
+    elif boundary_type == "boundary":
+        distance_map = get_geodesic_distance(mesh, boundary)
+    elif boundary_type == "all":
+        distance_map = get_geodesic_distance(mesh, np.concatenate((initial_boundary,boundary),axis=0))
+
+    # 3. Assegnazione della distanza ai punti: proiezione sul vertice più vicino
+    tree = cKDTree(mesh.vertices[:, :2])
+    _, nn_idx = tree.query(bulk_points, k=1)
+    point_distances = distance_map[nn_idx]
+
+    # Classificazione in steps intervallati
+    bins = np.linspace(0, 1, steps + 1)
+    cls = np.clip(np.digitize(point_distances, bins), 0, steps)
+
+    # Ordina i punti in base alla classe
+    sorted_idx = np.argsort(cls)
+    bulk_points = bulk_points[sorted_idx]
+    cls = cls[sorted_idx]
+
+    # Scheduler lineare
+    sched = list(np.linspace(0, epochs, steps + 1, dtype=int)[1:])
+
+    # Indici per separare le classi
+    idxs = np.cumsum(np.unique(cls, return_counts=True)[1])
+
+    # Campionamento dei punti di bordo
+    boundary_points = sample_points_on_boundary(mesh, boundary, boundary_n)
+
+    # Campionamento iniziale se richiesto
+    if init_n > 0 and initial_boundary is not None:
+        initial_points = sample_points_on_boundary(mesh, initial_boundary, init_n)
+    else:
         initial_points = None
-        boundary_points = sample_points_on_boundary(mesh, boundary, boundary_n)
-
-        subs, sched = progressive_domain_decomposition(
-            mesh, boundary, epochs, steps, 'linear', True
-        )
-    
-    ratios = [sub.area / mesh.area for sub in subs]
-    counts = [int(r*bulk_n) for r in ratios]
-    rem = bulk_n - sum(counts)
-    fr = [r*bulk_n - c for r,c in zip(ratios, counts)]
-    for i in sorted(range(len(fr)), key=lambda i: fr[i], reverse=True)[:rem]:
-        counts[i] += 1
-    bulk_points = [sample_points_on_mesh_poisson_disk(s, c) for s, c in zip(subs, counts)]
-    counts = [x.shape[0] for x in bulk_points]
-    bulk_points = np.vstack(bulk_points)
-    idxs = list(np.cumsum(counts))
 
     return bulk_points, boundary_points, initial_points, idxs, sched
 
@@ -296,10 +315,9 @@ def visualize_dataset(
     # Bulk: crea una mappa di classi per gruppi progressivi
     colors = np.zeros((bulk_points.shape[0]), dtype=int)
     for i, idx in enumerate(idxs):
-        colors[idx:] += 1  # differenzia gruppi
+        colors[idx:] += 1
 
     # TODO: sistema questo pezzo di codice
-    from matplotlib import cm
     cmap = cm.get_cmap('viridis', colors.shape[0])
 
     scatter = ax.scatter(
@@ -316,7 +334,7 @@ def visualize_dataset(
     # Sposta la leggenda fuori dal plot
     ax.legend(loc='center left', bbox_to_anchor=(1.05, 0.5))
     plt.tight_layout()
-    plt.show()
+    plt.savefig('./dataset.png', dpi=300, bbox_inches='tight')
 
 def visualize_scalar_field(mesh, s, face=False, cmap='bwr', save_path=None):
     v = mesh.vertices[:, :2]
@@ -334,7 +352,6 @@ def visualize_scalar_field(mesh, s, face=False, cmap='bwr', save_path=None):
     else:
         plt.show()
 
-
 '''
     MAIN
 '''
@@ -343,6 +360,7 @@ def mesh_preprocessing(
         epochs:int,
         steps:int,
         time_axis:int,
+        boundary_type:str,
         bulk_n:int,
         boundary_n:int,
         init_n:int,
@@ -355,6 +373,7 @@ def mesh_preprocessing(
         epochs,
         steps,
         time_axis,
+        boundary_type,
         bulk_n,
         boundary_n,
         init_n,
