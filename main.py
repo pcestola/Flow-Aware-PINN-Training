@@ -189,7 +189,7 @@ def main():
     '''
     trainer = TrainerStep(
         pinn,
-        device=torch.device('cuda:0'),
+        device=device,
         ckpt_dir=ckpt_dir,
         ckpt_interval = cfg["checkpoint"]["interval"]
     )
