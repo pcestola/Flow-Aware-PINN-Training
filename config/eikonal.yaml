@@ -9,10 +9,14 @@ model:
   type: "simple"
   dims: [2, 128, 128, 128, 128, 1]
 
+decomposition:
+  steps: 1
+  time_axis: -1
+  type: "all"
+
 mesh:
   file: "meshes/circle.obj"
   steps: 1
-  time_axis: -1
   bulk_points: 3000
   boundary_points: 1000
   initial_points: 0

@@ -12,7 +12,7 @@ model:
 decomposition:
   steps: 1
   time_axis: 0
-  type: "all"
+  type: "initial"
 
 mesh:
   file: "meshes/rectangle.obj"
@@ -23,7 +23,7 @@ mesh:
 training:
   scheduler: false
   epochs: 8000
-  lr: 1e-3
+  lr: 1e-2
   weights:
     bulk: 1.0
     boundary: 1.0

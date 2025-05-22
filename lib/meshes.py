@@ -231,7 +231,7 @@ def get_progressive_dataset(
     bulk_points = sample_points_on_mesh_poisson_disk(mesh, bulk_n)
 
     # 2. Mappa di distanza geodetica su tutti i vertici
-    if boundary_type == "init":
+    if boundary_type == "initial":
         distance_map = get_geodesic_distance(mesh, initial_boundary)
     elif boundary_type == "boundary":
         distance_map = get_geodesic_distance(mesh, boundary)

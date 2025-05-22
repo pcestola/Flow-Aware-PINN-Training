@@ -13,7 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from lib.models import SimpleNN, SIREN
-from lib.train import ProgressiveTrainer, Trainer, TrainerStep
+from lib.train import TrainerStep
 from lib.pinn import PINN, LaplaceEquation, WaveEquation, HeatEquation, EikonalEquation
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
 from lib.dataset import plot_generated_data_3d
@@ -143,9 +143,6 @@ def main():
 
     # Boundary
     boundary_value = np.zeros_like(boundary_points[:,0:1])
-    mask = boundary_points[:,1]==2.0
-    boundary_value[mask,:] = np.sin(np.pi*boundary_points[mask,0:1])
-    #boundary_value[boundary_points[:,0:1]**2+boundary_points[:,1:2]**2<=0.2]=1.0
     boundary_data = (
         torch.from_numpy(boundary_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
         torch.from_numpy(boundary_points[:, 1:2]).to(device=device, dtype=torch.float32).requires_grad_(),        
@@ -155,7 +152,7 @@ def main():
 
     # Initial
     if not initial_points is None:
-        initial_value = np.zeros_like(initial_points[:,0:1]) #np.exp(-4*initial_points[:,1:2]**2)
+        initial_value = np.exp(-4*initial_points[:,1:2]**2)
         initial_vel = np.zeros_like(initial_value)
         initial_data = (
             torch.from_numpy(initial_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
@@ -197,7 +194,7 @@ def main():
         ckpt_interval = cfg["checkpoint"]["interval"]
     )
 
-    losses = trainer.train(
+    flops, losses = trainer.train(
         bulk_data=bulk_data,
         bdry_data=boundary_data,
         init_data=initial_data,
@@ -216,7 +213,7 @@ def main():
     visualize_scalar_field(mesh, solution, save_path=os.path.join(img_dir,f'solution_{cfg["decomposition"]["steps"]}'))
 
     with open(os.path.join(log_dir,f'loss_{cfg["decomposition"]["steps"]}.pkl'), "wb") as f:
-        pickle.dump(losses, f)
+        pickle.dump((flops, losses), f)
 
 '''
     Implementa un sistema che aggiorna automaticamente i pesi dei termini di loss durante il training, per esempio:
