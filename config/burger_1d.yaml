@@ -1,13 +1,10 @@
-# config/default.yaml
-name: wave_rectangle
-
-# wave | heat | laplace | eikonal
-equation: "wave"
+name: burger_1d
+equation: "burger"
 
 # simple | siren
 model:
   type: "simple"
-  dims: [2, 32, 32, 32, 1]
+  dims: [2, 100, 100, 100, 100, 100, 1]
 
 decomposition:
   steps: 1
@@ -15,22 +12,22 @@ decomposition:
   type: "initial"
 
 mesh:
-  file: "meshes/rectangle.obj"
-  bulk_points: 1500
-  boundary_points: 160
-  initial_points: 40
+  file: "meshes/burger_1d.obj"
+  bulk_points: 8192
+  boundary_points: 1366
+  initial_points: 682
 
 training:
   scheduler: false
   epochs: 8000
-  lr: 1e-2
+  lr: 1e-3
   weights:
     bulk: 1.0
     boundary: 1.0
     initial: 1.0
 
 checkpoint:
-  enabled: true
+  enabled: false
   interval: 100
 
 logging:

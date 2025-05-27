@@ -4,3 +4,5 @@ results
 lib/meshes_old.py
 run.sh
 analyze.py
+config/personal
+meshes/personal
