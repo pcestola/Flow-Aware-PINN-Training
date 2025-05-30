@@ -128,6 +128,7 @@ class TrainerStep():
             ckpt_path = os.path.join(self.ckpt_dir,f"weights_{steps}.pt")
 
         decomposition_epochs = self.divide_epochs_exponential_growth(epochs, steps)
+        decomposition_epochs[-1] += 4000
 
         # Flops
         cumulative_flops = 0.0
@@ -138,7 +139,7 @@ class TrainerStep():
         optimizer = torch.optim.Adam(self.pinn.parameters(), lr=lr_start)
         scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=steps)
 
-        self.logger.info(f"{'Epoch':>5} {'Step':>6} {'Error':>8} {'Total loss':>12} {'Bulk Loss':>12} {'Boundary Loss':>15} {'Initial Loss':>13} {'Learning rate':>14}")
+        self.logger.info(f"{'Epoch':>5} {'Step':>6} {'Error':>12} {'Total loss':>12} {'Bulk Loss':>12} {'Boundary Loss':>15} {'Initial Loss':>13} {'Learning rate':>14}")
 
         min_error = inf
         errors = list()
@@ -174,22 +175,39 @@ class TrainerStep():
                 n_init = init_data[0].shape[0] if init_data is not None else 0
                 cumulative_flops += flops_per_point * (n_points + n_bdry + n_init)
 
-                if epoch % 100 == 0:
+                if epoch % 100 == 0 or epoch == decomposition_epochs[-1]-1:
                     self.pinn.eval()
                     u_pred = self.pinn(test_data[0], test_data[1])
                     u_real = test_data[2]
                     error = torch.mean((u_pred-u_real)**2).item()
+                    
+                    x = bulk_data[0].detach().cpu().numpy()
+                    y = bulk_data[1].detach().cpu().numpy()
+                    with torch.no_grad():
+                        u = u_pred.detach().cpu().numpy().reshape(100, 200)
+                        err = ((u_pred-u_real)**2).detach().cpu().numpy().reshape(100, 200)
+                    xmin, xmax = x.min(), x.max()
+                    ymin, ymax = y.min(), y.max()
+                    x = bulk_data_temp[0].detach().cpu().numpy()
+                    y = bulk_data_temp[1].detach().cpu().numpy()
 
-                    # TODO: da automatizzare
-                    if epoch == 7900:
-                        
-                        fig,axs=plt.subplots(2,2,figsize=(8,6))
-                        axs[0,0].imshow(u_pred.detach().cpu().numpy().reshape(100,200),cmap='bwr')
-                        axs[0,1].imshow(u_real.detach().cpu().numpy().reshape(100,200),cmap='bwr')
-                        axs[1,0].imshow(((u_pred-u_real)**2).detach().cpu().numpy().reshape(100,200),cmap='bwr')
-                        for ax in axs.flatten():
-                            ax.axis('off')
-                        plt.savefig(savepath)
+                    if epoch == 0:
+                        vmin = err.min()
+                        vmax = err.max()
+                    
+                    fig, axs = plt.subplots(1, 1, figsize=(4, 3))
+                    axs.scatter(x, y, s=4, c='k', alpha=0.3)
+                    axs.imshow(u, cmap='bwr', extent=[xmin, xmax, ymin, ymax], origin='lower')
+                    axs.axis('off')
+                    plt.savefig(savepath+f'_solution_{epoch}.png')
+                    plt.close()
+
+                    fig, axs = plt.subplots(1, 1, figsize=(4, 3))
+                    axs.scatter(x, y, s=4, c='w', alpha=0.2)
+                    axs.imshow(err, cmap='inferno', extent=[xmin, xmax, ymin, ymax], origin='lower', vmin=vmin, vmax=vmax)
+                    axs.axis('off')
+                    plt.savefig(savepath+f'_error_{epoch}.png')
+                    plt.close()
 
                     self.pinn.train()
 
@@ -201,7 +219,7 @@ class TrainerStep():
                     flops.append(cumulative_flops)
 
                     self.logger.info(
-                        f"{epoch:5d} {step:6d} {error:8.6f} {total_loss.item():12.6f} {bulk_loss.item():12.6f} "
+                        f"{epoch:5d} {step:6d} {error:12.6f} {total_loss.item():12.6f} {bulk_loss.item():12.6f} "
                         f"{boundary_loss.item():15.6f} {initial_loss.item():13.6f} "
                         f"{scheduler.get_last_lr()[0]:14.6f}"
                     )

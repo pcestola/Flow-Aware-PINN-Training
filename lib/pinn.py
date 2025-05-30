@@ -40,6 +40,12 @@ class WaveEquation(ResidualCalculator):
         u_xx = gradient(u, (x,x))
         return u_tt - self.c**2 * u_xx
 
+    def initial_condition(self, x):
+        if isinstance(x,torch.Tensor):
+            return torch.exp(-4*x**2)
+        else:
+            return np.exp(-4*x**2)
+
 class BurgerEquation(ResidualCalculator):
     def __init__(self, c:float=0.01/math.pi):
         self.c = c
@@ -64,6 +70,12 @@ class HeatEquation(ResidualCalculator):
         u_t = gradient(u, (t,))
         u_xx = gradient(u, (x,x))
         return u_t - self.alpha * u_xx
+    
+    def initial_condition(self, x):
+        if isinstance(x,torch.Tensor):
+            return torch.exp(-4*x**2)
+        else:
+            return np.exp(-4*x**2)
 
 class LaplaceEquation(ResidualCalculator):
     

@@ -1,0 +1,38 @@
+# config/default.yaml
+name: wave_rectangle
+
+# wave | heat | laplace | eikonal
+equation: "wave"
+
+# simple | siren
+model:
+  type: "simple"
+  dims: [2, 32, 32, 32, 1]
+
+decomposition:
+  steps: 1
+  time_axis: 0
+  type: "all"
+
+mesh:
+  file: "meshes/rectangle.obj"
+  bulk_points: 1500
+  boundary_points: 160
+  initial_points: 40
+
+training:
+  scheduler: false
+  epochs: 6000
+  lr: 1e-2
+  weights:
+    bulk: 1.0
+    boundary: 1.0
+    initial: 1.0
+
+checkpoint:
+  enabled: false
+  interval: 100
+
+logging:
+  enabled: true
+  level: "INFO"

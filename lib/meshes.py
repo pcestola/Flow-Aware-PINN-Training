@@ -236,7 +236,7 @@ def get_progressive_dataset(
     elif boundary_type == "boundary":
         distance_map = get_geodesic_distance(mesh, boundary)
     elif boundary_type == "all":
-        distance_map = get_geodesic_distance(mesh, np.concatenate((initial_boundary,boundary),axis=0))
+        distance_map = get_geodesic_distance(mesh, np.vstack((initial_boundary,boundary)))
 
     # 3. Assegnazione della distanza ai punti: proiezione sul vertice più vicino
     tree = cKDTree(mesh.vertices[:, :2])

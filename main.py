@@ -58,7 +58,8 @@ def setup_logging(log_cfg, path, steps):
     logging.basicConfig(
         filename=log_file,
         level=getattr(logging, log_cfg["level"]),
-        format="%(asctime)s [%(levelname)s] %(message)s"
+        #format="%(asctime)s [%(levelname)s] %(message)s"
+        format="[%(levelname)s] %(message)s"
     )
 
 def get_equation(name:str):
@@ -237,7 +238,7 @@ def main():
             steps=int(cfg["decomposition"]["steps"]),
             lr_start=float(cfg["training"]["lr"]),
             ckpt=cfg["checkpoint"]["enabled"],
-            savepath=os.path.join(img_dir,f'error_{cfg["decomposition"]["steps"]}.png')
+            savepath=os.path.join(img_dir,f'image_{cfg["decomposition"]["steps"]}')
         )
         
         # Show results
