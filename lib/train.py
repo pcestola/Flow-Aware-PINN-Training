@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from math import inf
 from typing import Tuple
 from fvcore.nn import FlopCountAnalysis
-from torch.optim.lr_scheduler import ReduceLROnPlateau, LinearLR
+from torch.optim.lr_scheduler import LinearLR
 
 class TrainerStep():
     def __init__(self, pinn, device=None, ckpt_dir=None, ckpt_interval=100):
@@ -36,7 +36,8 @@ class TrainerStep():
         epochs:int,
         steps:int,
         lr_start:float,
-        ckpt:bool):
+        ckpt:bool,
+        savepath:str):
         
         if ckpt:
             ckpt_path = os.path.join(self.ckpt_dir,f"weights_{steps}.pt")
@@ -88,10 +89,24 @@ class TrainerStep():
                 n_init = init_data[0].shape[0] if init_data is not None else 0
                 cumulative_flops += flops_per_point * (n_points + n_bdry + n_init)
 
-                if epoch % 100 == 0:
+                if epoch % 100 == 0 or epoch == decomposition_epochs[-1]-1:
                     self.pinn.eval()
                     bulk_loss = self.pinn.bulk_loss(bulk_data)
                     total_loss = weights.get('bulk', 1.0) * bulk_loss + weights.get('boundary', 1.0) * boundary_loss + weights.get('initial', 1.0) * initial_loss
+
+                    x = bulk_data[0].detach().cpu().numpy()
+                    y = bulk_data[1].detach().cpu().numpy()
+                    with torch.no_grad():
+                        u = self.pinn(bulk_data[0],bulk_data[1]).detach().cpu().numpy()
+                    xmin, xmax = x.min(), x.max()
+                    ymin, ymax = y.min(), y.max()
+
+                    fig, axs = plt.subplots(1, 1, figsize=(4, 3))
+                    axs.scatter(x, y, c=u, s=6, cmap='bwr')
+                    axs.axis('off')
+                    plt.savefig(savepath+f'_solution_{epoch}.png')
+                    plt.close()
+
                     self.pinn.train()
 
                     if ckpt and total_loss.item() < min_loss:
@@ -128,7 +143,7 @@ class TrainerStep():
             ckpt_path = os.path.join(self.ckpt_dir,f"weights_{steps}.pt")
 
         decomposition_epochs = self.divide_epochs_exponential_growth(epochs, steps)
-        decomposition_epochs[-1] += 4000
+        #decomposition_epochs[-1] += 4000
 
         # Flops
         cumulative_flops = 0.0
@@ -181,32 +196,14 @@ class TrainerStep():
                     u_real = test_data[2]
                     error = torch.mean((u_pred-u_real)**2).item()
                     
-                    x = bulk_data[0].detach().cpu().numpy()
-                    y = bulk_data[1].detach().cpu().numpy()
-                    with torch.no_grad():
-                        u = u_pred.detach().cpu().numpy().reshape(100, 200)
-                        err = ((u_pred-u_real)**2).detach().cpu().numpy().reshape(100, 200)
-                    xmin, xmax = x.min(), x.max()
-                    ymin, ymax = y.min(), y.max()
-                    x = bulk_data_temp[0].detach().cpu().numpy()
-                    y = bulk_data_temp[1].detach().cpu().numpy()
-
-                    if epoch == 0:
-                        vmin = err.min()
-                        vmax = err.max()
+                    x = test_data[0].detach().cpu().numpy()
+                    y = test_data[1].detach().cpu().numpy()
+                    u = u_pred.detach().cpu().numpy()
                     
-                    fig, axs = plt.subplots(1, 1, figsize=(4, 3))
-                    axs.scatter(x, y, s=4, c='k', alpha=0.3)
-                    axs.imshow(u, cmap='bwr', extent=[xmin, xmax, ymin, ymax], origin='lower')
+                    _, axs = plt.subplots(1, 1, figsize=(4, 3))
+                    axs.scatter(x, y, c=u, s=4, alpha=1.0, cmap='bwr')
                     axs.axis('off')
-                    plt.savefig(savepath+f'_solution_{epoch}.png')
-                    plt.close()
-
-                    fig, axs = plt.subplots(1, 1, figsize=(4, 3))
-                    axs.scatter(x, y, s=4, c='w', alpha=0.2)
-                    axs.imshow(err, cmap='inferno', extent=[xmin, xmax, ymin, ymax], origin='lower', vmin=vmin, vmax=vmax)
-                    axs.axis('off')
-                    plt.savefig(savepath+f'_error_{epoch}.png')
+                    plt.savefig(os.path.join(savepath,f'solution_{steps}_{epoch}.png'))
                     plt.close()
 
                     self.pinn.train()

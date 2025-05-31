@@ -41,3 +41,46 @@ class WaveLeapFrog():
             solution[n+1] = M @ solution[n] - solution[n-1]
         
         return solution
+    
+
+class HeatLeapFrog:
+    def __init__(self, params: Tuple[float, int, float, int, float]):
+        """
+        params = (L, Nx, T, Nt, alpha)
+        L     : lunghezza del dominio spaziale
+        Nx    : numero di punti spaziali
+        T     : tempo totale di simulazione
+        Nt    : numero di passi temporali
+        alpha : coefficiente di diffusione termica
+        """
+        self.L, self.Nx, self.T, self.Nt, self.alpha = params
+        self.dx = self.L / (self.Nx - 1)
+        self.dt = self.T / (self.Nt - 1)
+        
+        # Coefficiente numerico
+        self.lmbd = self.alpha * self.dt / self.dx**2
+
+    def solve(self, initial_condition: Callable):
+        """
+        Risolve l'equazione del calore 1D con:
+        - condizioni al bordo Dirichlet omogenee (u=0 ai bordi)
+        - condizione iniziale specificata
+        """
+        x = np.linspace(0, self.L, self.Nx)
+        u = np.zeros((self.Nt, self.Nx))
+        u[0] = np.array([initial_condition(xi - self.L / 2) for xi in x])
+
+        # Matrice del passo temporale (esplicita)
+        main_diag = (1 - 2 * self.lmbd) * np.ones(self.Nx)
+        off_diag = self.lmbd * np.ones(self.Nx - 1)
+        M = diags([main_diag, off_diag, off_diag], [0, -1, 1]).toarray()
+
+        # Condizioni al bordo: fissi i bordi a 0
+        M[0, :] = M[-1, :] = 0
+        M[0, 0] = M[-1, -1] = 1
+
+        for n in range(self.Nt - 1):
+            u[n+1] = M @ u[n]
+            u[n+1][0] = u[n+1][-1] = 0  # Rinforza il bordo se necessario
+
+        return u

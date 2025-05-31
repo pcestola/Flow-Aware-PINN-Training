@@ -160,7 +160,8 @@ def sample_points_on_mesh(mesh:trimesh.Trimesh, n:int) -> np.ndarray:
 
 def sample_points_on_mesh_poisson_disk(mesh:trimesh.Trimesh, num_samples:int, radius:float=None):
     
-    v = np.concatenate((mesh.vertices, np.zeros((mesh.vertices.shape[0],1))), axis=1)
+    #OLD: v = np.concatenate((mesh.vertices, np.zeros((mesh.vertices.shape[0],1))), axis=1)
+    v = mesh.vertices
     f = mesh.faces
 
     if radius == None:
@@ -236,7 +237,10 @@ def get_progressive_dataset(
     elif boundary_type == "boundary":
         distance_map = get_geodesic_distance(mesh, boundary)
     elif boundary_type == "all":
-        distance_map = get_geodesic_distance(mesh, np.vstack((initial_boundary,boundary)))
+        if initial_boundary is not None:
+            distance_map = get_geodesic_distance(mesh, np.vstack((initial_boundary,boundary)))
+        else:
+            distance_map = get_geodesic_distance(mesh, boundary)
 
     # 3. Assegnazione della distanza ai punti: proiezione sul vertice più vicino
     tree = cKDTree(mesh.vertices[:, :2])
@@ -274,7 +278,8 @@ def get_progressive_dataset(
 '''
 def visualize_boundary(mesh:trimesh.Trimesh, boundary_edges:list, classes:list=None):
 
-    points_3d = np.column_stack((mesh.vertices, np.zeros(len(mesh.vertices))))
+    #OLD: points_3d = np.column_stack((mesh.vertices, np.zeros(len(mesh.vertices))))
+    points_3d = mesh.vertices
 
     surface = pv.PolyData(points_3d)
     
@@ -296,6 +301,8 @@ def visualize_boundary(mesh:trimesh.Trimesh, boundary_edges:list, classes:list=N
     plotter.add_mesh(surface, color="white", opacity=0.1, point_size=5)
     plotter.add_mesh(edges, scalars=colors, line_width=3, cmap=["blue", "red", "black"], show_scalar_bar=False)
     plotter.show()
+    import random
+    plotter.screenshot(f"cancella_{random.randint(0,100)}.png")
 
 def visualize_dataset(
         bulk_points: np.ndarray,

@@ -1,0 +1,15 @@
+Le geometrie complesse suggeriscono di: imparare prima boundary e initial
+e poi bulk (mantenendo stabili le altre due).
+
+Aggiungi loss di classificazione
+
+Controlla che il conteggio dei flops sia corretto
+
+Per avere il grafico (flops vs error) corretto, devi fare checkpoint in base
+ai flop consumati (ogni tot) non in base all'epoca., altrimenti usa interpolazione
+lineare.
+
+Implementa un sistema che aggiorna automaticamente i pesi dei termini di loss durante il training, per esempio:
+- SoftAdapt (Heydari et al.)
+- GradNorm (Chen et al.)
+- NTK-based reweighting (Wang et al. 2021)
