@@ -160,7 +160,10 @@ class TrainerStep():
         errors = list()
         flops = list()
         for step in range(steps):
-            bulk_data_temp = tuple(x[:indices[step]] for x in bulk_data)
+            try:
+                bulk_data_temp = tuple(x[:indices[step]] for x in bulk_data)
+            except:
+                break
 
             for epoch in range(decomposition_epochs[step],decomposition_epochs[step+1]):
 
