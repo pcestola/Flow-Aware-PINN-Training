@@ -10,9 +10,9 @@ import numpy as np
 from lib.models import SimpleNN, SIREN
 from lib.train import TrainerStep
 from lib.pinn import (
-    PINN, PoissonEquation, LaplaceEquation,
+    PINN, LaplaceEquation,
     BurgerEquation, WaveEquation, HeatEquation,
-    EikonalEquation
+    EikonalEquation, Poisson_2D_C, Poisson_2D_CG
 )
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
 from lib.gif import generate_gif
@@ -43,7 +43,8 @@ def get_equation(name:str):
         'wave': WaveEquation,
         'heat': HeatEquation,
         'laplace': LaplaceEquation,
-        'poisson': PoissonEquation,
+        'poisson_1': Poisson_2D_C,
+        'poisson_2': Poisson_2D_CG,
         'eikonal': EikonalEquation,
         'burger': BurgerEquation
     }
@@ -216,7 +217,7 @@ def main():
         solution = solution.detach().cpu().flatten().numpy()
         visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["steps"]}'))
 
-        generate_gif(img_dir,save_dir)
+        generate_gif(img_dir,save_dir, cfg["decomposition"]["steps"])
 
         with open(os.path.join(log_dir,f'loss_{cfg["decomposition"]["steps"]}.pkl'), "wb") as f:
             pickle.dump((flops, errors), f)

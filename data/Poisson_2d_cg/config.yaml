@@ -1,6 +1,6 @@
-name: poisson_2d_c
+name: poisson_2d_cg
 
-equation: "poisson_1"
+equation: "poisson_2"
 
 # simple | siren
 model:
@@ -19,8 +19,8 @@ mesh:
 
 training:
   scheduler: false
-  epochs: 6000
-  lr: 1e-2
+  epochs: 8000
+  lr: 1e-3
   weights:
     bulk: 1.0
     boundary: 1.0

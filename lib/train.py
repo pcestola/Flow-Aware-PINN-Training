@@ -196,12 +196,16 @@ class TrainerStep():
                     u_real = test_data[2]
                     error = torch.mean((u_pred-u_real)**2).item()
                     
+                    _, axs = plt.subplots(1, 1, figsize=(4, 3))
                     x = test_data[0].detach().cpu().numpy()
                     y = test_data[1].detach().cpu().numpy()
                     u = u_pred.detach().cpu().numpy()
-                    
-                    _, axs = plt.subplots(1, 1, figsize=(4, 3))
                     axs.scatter(x, y, c=u, s=4, alpha=1.0, cmap='bwr')
+
+                    x = bulk_data_temp[0].detach().cpu().numpy()
+                    y = bulk_data_temp[1].detach().cpu().numpy()
+                    axs.scatter(x, y, c='k', s=4, alpha=0.3)
+
                     axs.axis('off')
                     plt.savefig(os.path.join(savepath,f'solution_{steps}_{epoch}.png'))
                     plt.close()
@@ -224,7 +228,6 @@ class TrainerStep():
             scheduler.step()
 
         return flops, errors
-
 
 class TrainerStepOLD():
     def __init__(self, pinn, device=None):
