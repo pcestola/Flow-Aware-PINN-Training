@@ -1,3 +1,9 @@
+
+!!!! CAPIRE COSA FARE QUANDO LA DOMAIN DEDCOMPOSITION LASCIA DEGLI STEP VUOTI!!!!
+---> ATTUALMENTE IL TRAIN VA IN ERRORE
+
+!!! SISTEMARE LA CONFIG AD UNA COSA ACCETTABILE, IL LR?!!!!
+
 Le geometrie complesse suggeriscono di: imparare prima boundary e initial
 e poi bulk (mantenendo stabili le altre due).
 

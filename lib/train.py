@@ -186,6 +186,7 @@ class TrainerStep():
 
                 total_loss.backward()
                 optimizer.step()
+                scheduler.step()
 
                 # flops
                 n_points = bulk_data_temp[0].shape[0]
@@ -207,7 +208,7 @@ class TrainerStep():
 
                     x = bulk_data_temp[0].detach().cpu().numpy()
                     y = bulk_data_temp[1].detach().cpu().numpy()
-                    axs.scatter(x, y, c='k', s=4, alpha=0.3)
+                    axs.scatter(x, y, c='k', s=4, alpha=0.2)
 
                     axs.axis('off')
                     plt.savefig(os.path.join(savepath,f'solution_{steps}_{epoch}.png'))
@@ -228,8 +229,8 @@ class TrainerStep():
                         f"{scheduler.get_last_lr()[0]:14.6f}"
                     )
 
-            scheduler.step()
-
+            # OLD: scheduler.step()
+                    
         return flops, errors
 
 class TrainerStepOLD():

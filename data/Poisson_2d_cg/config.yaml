@@ -2,7 +2,6 @@ name: poisson_2d_cg
 
 equation: "poisson_2"
 
-# simple | siren
 model:
   type: "simple"
   dims: [2, 32, 32, 32, 1]
@@ -13,8 +12,8 @@ decomposition:
   type: "all"
 
 mesh:
-  bulk_points: 1500
-  boundary_points: 500
+  bulk_points: 2000
+  boundary_points: 600
   initial_points: 0
 
 training:
