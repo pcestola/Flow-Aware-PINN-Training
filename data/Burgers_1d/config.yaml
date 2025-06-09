@@ -1,6 +1,6 @@
 name: burgers_1d
 
-equation: "burgers"
+equation: "burger"
 
 # simple | siren
 model:
