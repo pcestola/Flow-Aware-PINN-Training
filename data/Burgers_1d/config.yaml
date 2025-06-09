@@ -1,0 +1,35 @@
+name: burgers_1d
+
+equation: "burgers"
+
+# simple | siren
+model:
+  type: "simple"
+  dims: [2, 32, 32, 32, 1]
+
+decomposition:
+  steps: 1
+  time_axis: 0
+  type: "initial"
+
+mesh:
+  bulk_points: 1500
+  boundary_points: 500
+  initial_points: 500
+
+training:
+  scheduler: false
+  epochs: 6000
+  lr: 1e-2
+  weights:
+    bulk: 1.0
+    boundary: 1.0
+    initial: 1.0
+
+checkpoint:
+  enabled: false
+  interval: 100
+
+logging:
+  enabled: true
+  level: "INFO"
