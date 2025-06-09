@@ -61,29 +61,6 @@ class WaveEquation(ResidualCalculator):
         else:
             return np.zeros((data.shape[0],1))
 
-class BurgerEquation(ResidualCalculator):
-    def __init__(self, c:float=0.01/math.pi):
-        self.c = c
-
-    def compute_residual(self, u, t, x):
-        u_t = gradient(u, (t,))
-        u_x = gradient(u, (x,))
-        u_xx = gradient(u, (x,x))
-        return u_t + u * u_x - self.c * u_xx
-    
-    def initial_condition(self, data):
-        x = data[:,1]
-        if isinstance(x,torch.Tensor):
-            return -torch.sin(math.pi*x)
-        else:
-            return -np.sin(np.pi*x)
-    
-    def boundary_condition(self, data):
-        if isinstance(data,torch.Tensor):
-            return torch.zeros((data.shape[0],1))
-        else:
-            return np.zeros((data.shape[0],1))
-
 class HeatEquation(ResidualCalculator):
     def __init__(self, alpha:float=1.0):
         self.alpha = alpha
@@ -142,6 +119,30 @@ class EikonalEquation(ResidualCalculator):
             return np.zeros((data.shape[0],1))
 
 # PINNACLE
+class Burgers_1D(ResidualCalculator):
+    
+    def __init__(self, c:float=0.01/math.pi):
+        self.c = c
+
+    def compute_residual(self, u, t, x):
+        u_t = gradient(u, (t,))
+        u_x = gradient(u, (x,))
+        u_xx = gradient(u, (x,x))
+        return u_t + u * u_x - self.c * u_xx
+    
+    def initial_condition(self, data):
+        x = data[:,1:2]
+        if isinstance(x,torch.Tensor):
+            return -torch.sin(math.pi*x)
+        else:
+            return -np.sin(np.pi*x)
+    
+    def boundary_condition(self, data):
+        if isinstance(data,torch.Tensor):
+            return torch.zeros((data.shape[0],1))
+        else:
+            return np.zeros((data.shape[0],1))
+
 class Poisson_2D_C(ResidualCalculator):
     
     def compute_residual(self, u, x, y):
@@ -208,13 +209,14 @@ class PINN(nn.Module):
         residual = self.residual.compute_residual(u, t, x)
         return torch.mean(residual**2)
 
+    # TODO: automatizzare questa parte
     def initial_loss(self, data:Tuple[torch.Tensor]):
         t, x, u_true, v_true = data
         u = self.forward(t, x)
-        ut = gradient(u,(t,))
+        #ut = gradient(u,(t,))
         residual1 = u - u_true
-        residual2 = ut - v_true
-        return torch.mean(residual1**2) + torch.mean(residual2**2)
+        #residual2 = ut - v_true
+        return torch.mean(residual1**2) #+ torch.mean(residual2**2)
 
     def boundary_loss(self, data:Tuple[torch.Tensor]):
         t, x, u_true = data

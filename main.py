@@ -11,7 +11,7 @@ from lib.models import SimpleNN, SIREN
 from lib.train import TrainerStep
 from lib.pinn import (
     PINN, LaplaceEquation,
-    BurgerEquation, WaveEquation, HeatEquation,
+    Burgers_1D, WaveEquation, HeatEquation,
     EikonalEquation, Poisson_2D_C, Poisson_2D_CG
 )
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
@@ -21,7 +21,7 @@ from lib.gif import generate_gif
 def parse_args():
     parser = argparse.ArgumentParser(description="Addestramento PINN da config YAML")
     parser.add_argument("--path", type=str, help="Path alla cartella")
-    parser.add_argument("--steps", type=int, default=0)
+    parser.add_argument("--steps", type=int, default=1)
     parser.add_argument("--repeat", type=int, default=1)
     return parser.parse_args()
 
@@ -46,7 +46,7 @@ def get_equation(name:str):
         'poisson_1': Poisson_2D_C,
         'poisson_2': Poisson_2D_CG,
         'eikonal': EikonalEquation,
-        'burger': BurgerEquation
+        'burger': Burgers_1D
     }
     if name not in eqs:
         raise ValueError(f"Equazione sconosciuta: {name}")
