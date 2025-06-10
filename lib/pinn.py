@@ -192,6 +192,32 @@ class Poisson_2D_CG(ResidualCalculator):
             condition[mask] = 1.0
             return condition
 
+class Kuramoto_Shivashinsky(ResidualCalculator):
+    
+    def __init__(self, a:float=100/16, b:float=100/(16**2), c:float=100/(16**4)):
+        self.a = a
+        self.b = b
+        self.c = c
+
+    def compute_residual(self, u, x, t):
+        u_t = gradient(u, (t,))
+        u_x = gradient(u, (x,))
+        u_xx = gradient(u, (x,x))
+        u_xxxx = gradient(u, (x,x,x,x))
+        return u_t + self.a * u * u_x + self.b * u_xx + self.c * u_xxxx
+    
+    def initial_condition(self, data):
+        x = data[:,0:1]
+        if isinstance(x,torch.Tensor):
+            return torch.cos(x)*(1+torch.sin(x))
+        else:
+            return np.cos(x)*(1+np.sin(x))
+    
+    def boundary_condition(self, data):
+        if isinstance(data,torch.Tensor):
+            return torch.zeros((data.shape[0],1))
+        else:
+            return np.zeros((data.shape[0],1))
 
 # PINN
 class PINN(nn.Module):
@@ -209,14 +235,19 @@ class PINN(nn.Module):
         residual = self.residual.compute_residual(u, t, x)
         return torch.mean(residual**2)
 
-    # TODO: automatizzare questa parte
     def initial_loss(self, data:Tuple[torch.Tensor]):
-        t, x, u_true, v_true = data
-        u = self.forward(t, x)
-        #ut = gradient(u,(t,))
-        residual1 = u - u_true
-        #residual2 = ut - v_true
-        return torch.mean(residual1**2) #+ torch.mean(residual2**2)
+        if len(data) == 3:
+            t, x, u_true = data
+            u = self.forward(t, x)
+            residual = u - u_true
+            return torch.mean(residual**2)
+        else:
+            t, x, u_true, v_true = data
+            u = self.forward(t, x)
+            ut = gradient(u,(t,))
+            residual1 = u - u_true
+            residual2 = ut - v_true
+            return torch.mean(residual1**2) + torch.mean(residual2**2)
 
     def boundary_loss(self, data:Tuple[torch.Tensor]):
         t, x, u_true = data

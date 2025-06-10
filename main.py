@@ -12,7 +12,8 @@ from lib.train import TrainerStep
 from lib.pinn import (
     PINN, LaplaceEquation,
     Burgers_1D, WaveEquation, HeatEquation,
-    EikonalEquation, Poisson_2D_C, Poisson_2D_CG
+    EikonalEquation, Poisson_2D_C, Poisson_2D_CG,
+    Kuramoto_Shivashinsky
 )
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
 from lib.gif import generate_gif
@@ -46,7 +47,8 @@ def get_equation(name:str):
         'poisson_1': Poisson_2D_C,
         'poisson_2': Poisson_2D_CG,
         'eikonal': EikonalEquation,
-        'burger': Burgers_1D
+        'burger': Burgers_1D,
+        'kuramoto': Kuramoto_Shivashinsky
     }
     if name not in eqs:
         raise ValueError(f"Equazione sconosciuta: {name}")
@@ -153,12 +155,12 @@ def main():
         # Initial
         if not initial_points is None:
             initial_value = equation.initial_condition(initial_points)
-            initial_vel = np.zeros_like(initial_value)
+            #initial_vel = np.zeros_like(initial_value)
             initial_data = (
                 torch.from_numpy(initial_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
                 torch.from_numpy(initial_points[:, 1:2]).to(device=device, dtype=torch.float32).requires_grad_(),
                 torch.from_numpy(initial_value).to(device=device, dtype=torch.float32),
-                torch.from_numpy(initial_vel).to(device=device, dtype=torch.float)
+                #torch.from_numpy(initial_vel).to(device=device, dtype=torch.float)
             )
             del initial_points
         else:
@@ -217,7 +219,7 @@ def main():
         solution = solution.detach().cpu().flatten().numpy()
         visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["steps"]}'))
 
-        generate_gif(img_dir,save_dir, cfg["decomposition"]["steps"])
+        generate_gif(img_dir, save_dir, cfg["decomposition"]["steps"])
 
         with open(os.path.join(log_dir,f'loss_{cfg["decomposition"]["steps"]}.pkl'), "wb") as f:
             pickle.dump((flops, errors), f)
