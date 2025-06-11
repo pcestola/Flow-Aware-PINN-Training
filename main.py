@@ -176,6 +176,22 @@ def main():
         )
         del data
 
+        import matplotlib.pyplot as plt
+        #plt.scatter(test_data[0].detach().cpu(),test_data[1].detach().cpu(),c=test_data[2].detach().cpu())
+        t = test_data[0].detach().cpu().numpy()
+        x = test_data[1].detach().cpu().numpy()
+        u = test_data[2].detach().cpu().numpy()
+        mask1 = x==0
+        mask2 = x==2*np.pi
+        t = np.concatenate((t[mask1],t[mask2]),axis=0).reshape((-1,1))
+        x = np.concatenate((x[mask1],x[mask2]),axis=0).reshape((-1,1))
+        u = np.concatenate((u[mask1],u[mask2]),axis=0).reshape((-1,1))
+        boundary_data = (
+            torch.from_numpy(t).to(device=device, dtype=torch.float32).requires_grad_(),
+            torch.from_numpy(x).to(device=device, dtype=torch.float32).requires_grad_(),        
+            torch.from_numpy(u).to(device=device, dtype=torch.float32)
+        )
+
         '''
             MODELLO
         '''

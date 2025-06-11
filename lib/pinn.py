@@ -199,7 +199,7 @@ class Kuramoto_Shivashinsky(ResidualCalculator):
         self.b = b
         self.c = c
 
-    def compute_residual(self, u, x, t):
+    def compute_residual(self, u, t, x):
         u_t = gradient(u, (t,))
         u_x = gradient(u, (x,))
         u_xx = gradient(u, (x,x))
@@ -207,7 +207,7 @@ class Kuramoto_Shivashinsky(ResidualCalculator):
         return u_t + self.a * u * u_x + self.b * u_xx + self.c * u_xxxx
     
     def initial_condition(self, data):
-        x = data[:,0:1]
+        x = data[:,1:2]
         if isinstance(x,torch.Tensor):
             return torch.cos(x)*(1+torch.sin(x))
         else:
