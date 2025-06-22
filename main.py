@@ -18,6 +18,8 @@ from lib.pinn import (
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
 from lib.gif import generate_gif
 
+from lib.plotter import Plotter
+
 # UTILS
 def parse_args():
     parser = argparse.ArgumentParser(description="Addestramento PINN da config YAML")
@@ -155,12 +157,12 @@ def main():
         # Initial
         if not initial_points is None:
             initial_value = equation.initial_condition(initial_points)
-            #initial_vel = np.zeros_like(initial_value)
+            initial_vel = np.zeros_like(initial_value)
             initial_data = (
                 torch.from_numpy(initial_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
                 torch.from_numpy(initial_points[:, 1:2]).to(device=device, dtype=torch.float32).requires_grad_(),
                 torch.from_numpy(initial_value).to(device=device, dtype=torch.float32),
-                #torch.from_numpy(initial_vel).to(device=device, dtype=torch.float)
+                torch.from_numpy(initial_vel).to(device=device, dtype=torch.float)
             )
             del initial_points
         else:
@@ -176,6 +178,7 @@ def main():
         )
         del data
 
+        '''
         import matplotlib.pyplot as plt
         #plt.scatter(test_data[0].detach().cpu(),test_data[1].detach().cpu(),c=test_data[2].detach().cpu())
         t = test_data[0].detach().cpu().numpy()
@@ -191,6 +194,7 @@ def main():
             torch.from_numpy(x).to(device=device, dtype=torch.float32).requires_grad_(),        
             torch.from_numpy(u).to(device=device, dtype=torch.float32)
         )
+        '''
 
         '''
             MODELLO
@@ -205,6 +209,10 @@ def main():
         # Costruzione PINN
         pinn = PINN(network, equation)
         pinn.to(device)
+
+        # Plotter
+        plotter = Plotter(network)
+        plotter.prepare()
 
         '''
         TRAINING
@@ -227,17 +235,18 @@ def main():
             steps=int(cfg["decomposition"]["steps"]),
             lr_start=float(cfg["training"]["lr"]),
             ckpt=cfg["checkpoint"]["enabled"],
-            savepath=img_dir
+            savepath=img_dir,
+            #plotter=plotter
         )
         
         # Results
-        solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
-        solution = solution.detach().cpu().flatten().numpy()
-        visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["steps"]}'))
+        #solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
+        #solution = solution.detach().cpu().flatten().numpy()
+        #visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["steps"]}'))
 
-        generate_gif(img_dir, save_dir, cfg["decomposition"]["steps"])
+        #generate_gif(img_dir, save_dir, cfg["decomposition"]["steps"])
 
-        with open(os.path.join(log_dir,f'loss_{cfg["decomposition"]["steps"]}.pkl'), "wb") as f:
+        with open(os.path.join(log_dir,f'error_{cfg["decomposition"]["steps"]}.pkl'), "wb") as f:
             pickle.dump((flops, errors), f)
 
 if __name__ == "__main__":
