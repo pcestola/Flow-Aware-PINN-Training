@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument("--path", type=str, help="Path alla cartella")
     parser.add_argument("--steps", type=int, default=1)
     parser.add_argument("--repeat", type=int, default=1)
+    parser.add_argument("--device", type=int, default=0)
     return parser.parse_args()
 
 def load_config(path):
@@ -90,7 +91,8 @@ def main():
         torch.manual_seed(seed)
         np.random.seed(seed)
 
-        save_dir = os.path.join("results", cfg["name"], f"run_{run_id}")
+        name = cfg["name"]+'_'+cfg["decomposition"]["epochs_division"]+'_'+str(cfg["decomposition"]["epochs_extra"])
+        save_dir = os.path.join("results", name, f"run_{run_id}")
         log_dir = os.path.join(save_dir, "logging")
         img_dir = os.path.join(save_dir, "images")
         os.makedirs(save_dir, exist_ok=True)
@@ -110,7 +112,7 @@ def main():
 
         if torch.cuda.is_available():
             #gpu_id = get_free_gpu()
-            gpu_id = 0
+            gpu_id = args.device
             device = torch.device(f"cuda:{gpu_id}")
             logging.info(f'Using GPU: {device}')
         else:
@@ -211,8 +213,8 @@ def main():
         pinn.to(device)
 
         # Plotter
-        plotter = Plotter(network)
-        plotter.prepare()
+        #plotter = Plotter(network)
+        #plotter.prepare()
 
         '''
         TRAINING
@@ -224,7 +226,7 @@ def main():
             ckpt_interval = cfg["checkpoint"]["interval"]
         )
 
-        flops, errors = trainer.train_with_error(
+        flops, errors = trainer.train(
             bulk_data=bulk_data,
             bdry_data=boundary_data,
             init_data=initial_data,
@@ -233,10 +235,11 @@ def main():
             weights=cfg["training"]["weights"],
             epochs=int(cfg["training"]["epochs"]),
             steps=int(cfg["decomposition"]["steps"]),
+            divide=cfg["decomposition"]["epochs_division"],
+            extra_epochs=cfg["decomposition"]["epochs_extra"],
             lr_start=float(cfg["training"]["lr"]),
             ckpt=cfg["checkpoint"]["enabled"],
-            savepath=img_dir,
-            #plotter=plotter
+            #savepath=img_dir,
         )
         
         # Results
