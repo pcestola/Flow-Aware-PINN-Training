@@ -1,7 +1,10 @@
-name: poisson_2d_cg
+# config/default.yaml
+name: example
 
-equation: "poisson_2"
+# wave | heat | laplace | eikonal
+equation: "example"
 
+# simple | siren
 model:
   type: "simple"
   dims: [2, 32, 32, 32, 1]
@@ -9,18 +12,18 @@ model:
 decomposition:
   steps: 1
   time_axis: -1
-  type: "all"
+  type: "boundary"
   epochs_division: "exponential"
-  epochs_extra: 2000
+  epochs_extra: 0
 
 mesh:
-  bulk_points: 2000
-  boundary_points: 600
+  bulk_points: 1500
+  boundary_points: 400
   initial_points: 0
 
 training:
   scheduler: false
-  epochs: 8000
+  epochs: 6000
   lr: 1e-2
   weights:
     bulk: 1.0

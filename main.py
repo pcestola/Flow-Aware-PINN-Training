@@ -13,7 +13,7 @@ from lib.pinn import (
     PINN, LaplaceEquation,
     Burgers_1D, WaveEquation, HeatEquation,
     EikonalEquation, Poisson_2D_C, Poisson_2D_CG,
-    Kuramoto_Shivashinsky
+    Kuramoto_Shivashinsky, Example
 )
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
 from lib.gif import generate_gif
@@ -51,7 +51,8 @@ def get_equation(name:str):
         'poisson_2': Poisson_2D_CG,
         'eikonal': EikonalEquation,
         'burger': Burgers_1D,
-        'kuramoto': Kuramoto_Shivashinsky
+        'kuramoto': Kuramoto_Shivashinsky,
+        'example': Example
     }
     if name not in eqs:
         raise ValueError(f"Equazione sconosciuta: {name}")

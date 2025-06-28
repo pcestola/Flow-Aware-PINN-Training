@@ -14,7 +14,7 @@ decomposition:
   time_axis: 0
   type: "initial"
   epochs_division: "exponential"
-  epochs_extra: 4000
+  epochs_extra: 0
 
 mesh:
   bulk_points: 1500

@@ -17,14 +17,8 @@ from typing import Optional
 from fvcore.nn import FlopCountAnalysis
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR
 
-import torch
-import os
-import matplotlib.pyplot as plt
-from torch.func import functional_call, jacrev, vmap
-from torch.nn.utils import parameters_to_vector
-from torch.optim.lr_scheduler import LinearLR
-from torch.nn import functional as F
-from math import inf
+# NOTE: l'attuale scheduler è il migliore dal punto di vista della
+# performance complessiva
 
 class TrainerStep():
     def __init__(self, pinn, device=None, ckpt_dir=None, ckpt_interval=100):

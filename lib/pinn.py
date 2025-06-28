@@ -192,6 +192,24 @@ class Poisson_2D_CG(ResidualCalculator):
             condition[mask] = 1.0
             return condition
 
+class Example(ResidualCalculator):
+    def __init__(self):
+        super().__init__()
+        self.omega = 4
+    
+    def compute_residual(self, u, x, y):
+        u_xx = gradient(u, (x,x))
+        u_yy = gradient(u, (y,y))
+        return u_xx + u_yy
+
+    def boundary_condition(self, data):
+        x = data[:,0]
+        y = data[:,1]
+        if isinstance(x,torch.Tensor):
+            return torch.sin(self.omega*torch.atan2(y,x))
+        else:
+            return np.sin(self.omega*np.arctan2(y,x))
+
 class Kuramoto_Shivashinsky(ResidualCalculator):
     
     def __init__(self, a:float=100/16, b:float=100/(16**2), c:float=100/(16**4)):
