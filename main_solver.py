@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 
 from lib.schemes import WaveLeapFrog, HeatLeapFrog
 from lib.models import SimpleNN, SIREN
-from lib.train import TrainerStep
+from lib.train_old import TrainerStep
 from lib.pinn import PINN, LaplaceEquation, BurgerEquation, WaveEquation, HeatEquation, EikonalEquation
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
 from lib.dataset import plot_generated_data_3d

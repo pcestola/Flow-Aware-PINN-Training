@@ -17,9 +17,6 @@ from typing import Optional
 from fvcore.nn import FlopCountAnalysis
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR
 
-from lib.meshes import get_points_classes
-from scipy.interpolate import LinearNDInterpolator
-
 # NOTE: l'attuale scheduler è il migliore dal punto di vista della
 # performance complessiva
 
@@ -206,8 +203,6 @@ class TrainerStep():
         weights: dict,
         epochs: int,
         steps: int,
-        divide: str,
-        extra_epochs: int,
         lr_start: float,
         ckpt: bool,
         savepath: str,
@@ -219,11 +214,7 @@ class TrainerStep():
         if ckpt:
             ckpt_path = os.path.join(self.ckpt_dir, f"weights_{steps}.pt")
 
-        if divide == 'linear':
-            decomposition_epochs = self.divide_epochs_linear(epochs, steps)
-        elif divide == 'exponential':
-            decomposition_epochs = self.divide_epochs_exponential_growth(epochs, steps)
-        decomposition_epochs[-1] += extra_epochs
+        decomposition_epochs = self.divide_epochs_exponential_growth(epochs, steps)
 
         flop_counter = FlopCountAnalysis(self.pinn.network, torch.rand((1, 2), device=self.device))
         flops_per_point = flop_counter.total()
@@ -480,23 +471,14 @@ class TrainerStep():
         weights: dict,
         epochs: int,
         steps: int,
-        divide: str,
-        extra_epochs: int,
         lr_start: float,
         ckpt: bool,
-        savepath: str,
-        mesh,
-        time_axis,
-        boundary_type):
+        savepath: str):
 
         if ckpt:
             ckpt_path = os.path.join(self.ckpt_dir, f"weights_{steps}.pt")
 
-        if divide == 'linear':
-            decomposition_epochs = self.divide_epochs_linear(epochs, steps)
-        elif divide == 'exponential':
-            decomposition_epochs = self.divide_epochs_exponential_growth(epochs, steps)
-        decomposition_epochs[-1] += extra_epochs
+        decomposition_epochs = self.divide_epochs_exponential_growth(epochs, steps)
 
         #optimizer = torch.optim.Adam(self.pinn.parameters(), lr=lr_start)
         optimizer = torch.optim.SGD(self.pinn.parameters(), lr=lr_start)
@@ -504,24 +486,13 @@ class TrainerStep():
 
         self.logger.info(f"{'Epoch':>5} {'Step':>6} {'Error':>12} {'Total loss':>12} {'Bulk Loss':>12} {'Boundary Loss':>15} {'Initial Loss':>13} {'Learning rate':>14}")
 
-        # Prepare test data
-        x_test, y_test, u_test = test_data
-        import sys
-        import matplotlib.pyplot as plt
-        classes = get_points_classes(
-            x_test,
-            y_test,
-            mesh,
-            16, #steps
-            time_axis,
-            boundary_type
-        )
-
-        # Parameters
         min_error = inf
         errors = [list() for _ in range(6)]
         flops = list()
 
+        x_test, y_test, u_test = test_data
+
+        theta_prec = torch.zeros((2241),device=torch.device('cuda:0'))
         for step in range(steps):
             try:
                 bulk_data_temp = tuple(x[:indices[step]] for x in bulk_data)
@@ -557,22 +528,7 @@ class TrainerStep():
 
                 theta = parameters_to_vector(self.pinn.parameters())
 
-                if epoch % 10 == 0 or epoch == decomposition_epochs[-1] - 1:
-
-                    bulk_loss = self.pinn.bulk_loss(bulk_data_temp)
-                    total_loss = weights.get('bulk', 1.0) * bulk_loss
-                    if bdry_data is not None:
-                        boundary_loss = self.pinn.boundary_loss(bdry_data)
-                        total_loss += weights.get('boundary', 1.0) * boundary_loss
-                    else:
-                        boundary_loss = torch.tensor(0.0)
-                    if init_data is not None:
-                        initial_loss = self.pinn.initial_loss(init_data)
-                        total_loss += weights.get('initial', 1.0) * initial_loss
-                    else:
-                        initial_loss = torch.tensor(0.0)
-                    grad = torch.autograd.grad(total_loss, self.pinn.parameters(), retain_graph=True, create_graph=False)
-                    grad_loss = torch.cat([g.reshape(-1) for g in grad]).detach()
+                if epoch % 100 == 0 or epoch == decomposition_epochs[-1] - 1:
                     
                     params_dict = dict(self.pinn.named_parameters())
 
@@ -590,37 +546,30 @@ class TrainerStep():
                     )(x_test, y_test, u_test)
                     
                     with torch.no_grad():
-                        dot_products = - grads_err @ grad_loss #(theta-theta_prec)
+                        dot_products = - grads_err @ (theta-theta_prec)#grad_loss
 
-                if epoch % 10 == 0 or epoch == decomposition_epochs[-1] - 1:
+                if epoch % 100 == 0 or epoch == decomposition_epochs[-1] - 1:
                     
-                    # TODO: calcolare il gradiente su ogni punto del blocco e poi fare la media
-                    # è uguale a calcolarlo direttamente su tutto il blocco?
-                    for i in range(1,17):
-                        mask = classes==i
-                        dot_products[mask] = dot_products[mask].mean()
-
-                    points = np.column_stack((x_test.detach().cpu().numpy(), y_test.detach().cpu().numpy()))
-                    values = dot_products.detach().cpu().numpy()
-                    interp = LinearNDInterpolator(points, values)
-                    val_v = interp(mesh.vertices[:,0],mesh.vertices[:,1])
-
-                    # Visualizza
-                    plt.figure(figsize=(8,6))
-                    plt.tripcolor(mesh.vertices[:,0], mesh.vertices[:,1],
-                          mesh.faces, val_v, shading='gouraud', cmap='seismic')
-                    '''
-                    plt.scatter(
-                        x_test.detach().cpu(),
-                        y_test.detach().cpu(),
-                        c=dot_products.detach().cpu(),
-                        cmap='seismic')
-                    '''
+                    #with torch.no_grad():
+                        #x_test, y_test, u_test = test_data
+                        #u = self.pinn(x_test, y_test)
+                    #    err = (u-u_test)**2
+                    #x_test, y_test, u_test = test_data
+                    
+                    # --- Plot ---
+                    plt.figure(figsize=(6, 5))
+                    plt.scatter(x_test.detach().cpu(), y_test.detach().cpu(), c=dot_products.detach().cpu(), cmap='seismic', s=10)#, vmin=-0.2, vmax=0.2)
+                    plt.colorbar(label='⟨∇Err_i, ∇L_tot⟩')
+                    plt.xlabel('x')
+                    plt.ylabel('y')
+                    plt.title(f"Step {step}, Epoch {epoch}")
+                    plt.tight_layout()
                     plt.xlim((-4,4))
                     plt.ylim((-4,4))
-                    plt.colorbar()
                     plt.savefig(savepath+f"/step_{step}_epoch_{epoch}.png")
                     plt.close()
+                
+                theta_prec = theta.clone()
 
         return flops, errors
 

@@ -1,3 +1,4 @@
+import torch
 import meshio
 import trimesh
 import numpy as np
@@ -358,6 +359,52 @@ def visualize_scalar_field(mesh, s, face=False, cmap='bwr', save_path=None):
         plt.close()
     else:
         plt.show()
+
+'''
+    EXTRA
+'''
+def get_points_classes(
+    x, y,
+    mesh,
+    steps,
+    time_axis,
+    boundary_type
+    ):
+
+    boundary = get_topological_boundary(mesh)
+
+    if time_axis >= 0:
+        boundary_classes = classify_boundary(mesh, time_axis=time_axis)
+        initial_boundary = boundary[boundary_classes == 0]
+        boundary = boundary[boundary_classes == 1]
+    else:
+        initial_boundary = None
+
+    # 2. Mappa di distanza geodetica su tutti i vertici
+    if boundary_type == "initial":
+        distance_map = get_geodesic_distance(mesh, initial_boundary)
+    elif boundary_type == "boundary":
+        distance_map = get_geodesic_distance(mesh, boundary)
+    elif boundary_type == "all":
+        if initial_boundary is not None:
+            distance_map = get_geodesic_distance(mesh, np.vstack((initial_boundary,boundary)))
+        else:
+            distance_map = get_geodesic_distance(mesh, boundary)
+
+    # 3. Concatena
+    points = torch.cat((x,y),dim=1).detach().cpu()
+
+    # 3. Assegnazione della distanza ai punti: proiezione sul vertice più vicino
+    tree = cKDTree(mesh.vertices[:, :2])
+    _, nn_idx = tree.query(points, k=1)
+    point_distances = distance_map[nn_idx]
+
+    # Classificazione in steps intervallati
+    bins = np.linspace(0, 1, steps + 1)
+    cls = np.clip(np.digitize(point_distances, bins), 0, steps)
+
+    return cls
+
 
 '''
     MAIN
