@@ -1,6 +1,8 @@
-name: poisson_2d_c
+# config/default.yaml
+name: heat_1d
 
-equation: "poisson_1"
+# wave | heat | laplace | eikonal
+equation: "heat"
 
 # simple | siren
 model:
@@ -9,20 +11,20 @@ model:
 
 decomposition:
   steps: 1
-  time_axis: -1
-  type: "all"
-  epochs_division: "linear"
-  epochs_extra: 4000
+  time_axis: 0
+  type: "initial"
+  epochs_division: "exponential"
+  epochs_extra: 0
 
 mesh:
   bulk_points: 1500
-  boundary_points: 500
-  initial_points: 0
+  boundary_points: 160
+  initial_points: 40
 
 training:
   scheduler: false
-  epochs: 6000
-  lr: 1e-2
+  epochs: 10000
+  lr: 1e-1
   weights:
     bulk: 1.0
     boundary: 1.0

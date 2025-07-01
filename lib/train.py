@@ -531,33 +531,7 @@ class TrainerStep():
             for epoch in range(decomposition_epochs[step], decomposition_epochs[step + 1]):
 
                 optimizer.zero_grad()
-
-                bulk_loss = self.pinn.bulk_loss(bulk_data_temp)
-                total_loss = weights.get('bulk', 1.0) * bulk_loss
-
-                if bdry_data is not None:
-                    boundary_loss = self.pinn.boundary_loss(bdry_data)
-                    total_loss += weights.get('boundary', 1.0) * boundary_loss
-                else:
-                    boundary_loss = torch.tensor(0.0)
-
-                if init_data is not None:
-                    initial_loss = self.pinn.initial_loss(init_data)
-                    total_loss += weights.get('initial', 1.0) * initial_loss
-                else:
-                    initial_loss = torch.tensor(0.0)
-
-                #if epoch % 1 == 0 or epoch == decomposition_epochs[-1] - 1:
-                    #grad = torch.autograd.grad(total_loss, self.pinn.parameters(), retain_graph=True, create_graph=False)
-                    #grad_loss = torch.cat([g.reshape(-1) for g in grad]).detach()
-
-                total_loss.backward()
-                optimizer.step()
-                scheduler.step()
-
-                theta = parameters_to_vector(self.pinn.parameters())
-
-                if epoch % 10 == 0 or epoch == decomposition_epochs[-1] - 1:
+                if epoch % 1 == 0 or epoch == decomposition_epochs[-1] - 1:
 
                     bulk_loss = self.pinn.bulk_loss(bulk_data_temp)
                     total_loss = weights.get('bulk', 1.0) * bulk_loss
@@ -590,15 +564,13 @@ class TrainerStep():
                     )(x_test, y_test, u_test)
                     
                     with torch.no_grad():
-                        dot_products = - grads_err @ grad_loss #(theta-theta_prec)
+                        dot_products = - grads_err @ grad_loss
 
-                if epoch % 10 == 0 or epoch == decomposition_epochs[-1] - 1:
+                if epoch % 1 == 0 or epoch == decomposition_epochs[-1] - 1:
                     
-                    # TODO: calcolare il gradiente su ogni punto del blocco e poi fare la media
-                    # è uguale a calcolarlo direttamente su tutto il blocco?
                     for i in range(1,17):
                         mask = classes==i
-                        dot_products[mask] = dot_products[mask].mean()
+                        dot_products[mask] = dot_products[mask].sum()
 
                     points = np.column_stack((x_test.detach().cpu().numpy(), y_test.detach().cpu().numpy()))
                     values = dot_products.detach().cpu().numpy()
@@ -609,84 +581,75 @@ class TrainerStep():
                     plt.figure(figsize=(8,6))
                     plt.tripcolor(mesh.vertices[:,0], mesh.vertices[:,1],
                           mesh.faces, val_v, shading='gouraud', cmap='seismic')
-                    '''
-                    plt.scatter(
-                        x_test.detach().cpu(),
-                        y_test.detach().cpu(),
-                        c=dot_products.detach().cpu(),
-                        cmap='seismic')
-                    '''
-                    plt.xlim((-4,4))
-                    plt.ylim((-4,4))
+                    plt.xlim((0,4))
+                    plt.ylim((-2,2))
                     plt.colorbar()
                     plt.savefig(savepath+f"/step_{step}_epoch_{epoch}.png")
                     plt.close()
 
-        return flops, errors
-
-
-class TrainerStepOLD():
-    def __init__(self, pinn, device=None):
-        self.pinn = pinn
-        self.device = device if device else torch.device('cpu')
-
-    def divide_epochs_exponential_growth(self, epochs:int, steps:int):
-        base = np.exp(np.linspace(0, 1, steps))
-        base = base / base.sum()
-        scaled_parts = (base * epochs).round().astype(int)
-        adjustment = epochs - scaled_parts.sum()
-        scaled_parts[-1] += adjustment
-        scaled_parts = list(scaled_parts.cumsum())
-        scaled_parts.insert(0,0)
-        return scaled_parts
-
-    def train(self,
-              bulk_data:Tuple[torch.Tensor],
-              bdry_data:Tuple[torch.Tensor],
-              init_data:Tuple[torch.Tensor],
-              indices:list,
-              weights:dict,
-              epochs:int,
-              steps:int,
-              lr_start:float=1e-2):
-        
-        decomposition_epochs = self.divide_epochs_exponential_growth(epochs, steps)
-        
-        #optimizer = torch.optim.Adam(self.pinn.parameters(), lr=lr_start)
-        #scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=steps)
-
-        print(f"Epoch\tStep\tLRate\tTotal loss\tBulk Loss\tBoundary Loss\tInitial Loss")
-        
-        for step in range(steps):
-            
-            bulk_data_temp = tuple(x[:indices[step]] for x in bulk_data)
-
-            optimizer = torch.optim.Adam(self.pinn.parameters(), lr=lr_start)
-
-            for epoch in range(decomposition_epochs[step],decomposition_epochs[step+1]):
+                    if epoch == 20:
+                        import sys
+                        sys.exit()
 
                 optimizer.zero_grad()
-                
+
                 bulk_loss = self.pinn.bulk_loss(bulk_data_temp)
-                total_loss = weights.get('bulk',1.0) * bulk_loss
+                total_loss = weights.get('bulk', 1.0) * bulk_loss
 
                 if bdry_data is not None:
                     boundary_loss = self.pinn.boundary_loss(bdry_data)
-                    total_loss += weights.get('boundary',1.0) * boundary_loss
+                    total_loss += weights.get('boundary', 1.0) * boundary_loss
                 else:
                     boundary_loss = torch.tensor(0.0)
 
                 if init_data is not None:
                     initial_loss = self.pinn.initial_loss(init_data)
-                    total_loss += weights.get('initial',1.0) * initial_loss
+                    total_loss += weights.get('initial', 1.0) * initial_loss
                 else:
                     initial_loss = torch.tensor(0.0)
 
                 total_loss.backward()
                 optimizer.step()
+                scheduler.step()
 
-                if epoch % 100 == 0:
-                    print(f"{epoch}\t{step:4}\t{lr_start:.6f}\t{total_loss.item():.6f}\t{bulk_loss.item():.6f}\t{boundary_loss.item():.6f}\t{initial_loss.item():.6f}")
+        return flops, errors
 
-            #scheduler.step()
-            lr_start -= 9e-3/steps
+
+
+''' CAMPO VETTORIALE
+# === 1. Costruzione della griglia regolare ===
+                    x_lin = np.linspace(-4, 4, 100)
+                    y_lin = np.linspace(-2, 2, 50)
+                    x_grid, y_grid = np.meshgrid(x_lin, y_lin)  # shape (ny, nx)
+
+                    # === 2. Interpolazione del campo scalare ===
+                    # Supponiamo tu abbia già:
+                    # - points: (N, 2) array di coordinate dei punti noti
+                    # - values: (N,) array di valori scalari noti
+                    interp = LinearNDInterpolator(points, values)
+
+                    # Interpola sulla griglia
+                    val_v_grid = interp(x_grid, y_grid)  # shape (ny, nx)
+
+                    # === 3. Calcolo del gradiente numerico ===
+                    dx = x_lin[1] - x_lin[0]  # passo in x
+                    dy = y_lin[1] - y_lin[0]  # passo in y
+
+                    # np.gradient restituisce (∂/∂y, ∂/∂x)
+                    grad_y, grad_x = np.gradient(val_v_grid, dy, dx)
+                    norm = np.sqrt(grad_x**2+grad_y**2)+1e-10
+                    grad_y *= 0.1/norm
+                    grad_x *= 0.1/norm
+
+                    # === 4. Plot del campo scalare + campo vettoriale ===
+                    plt.figure(figsize=(8, 6))
+                    plt.contourf(x_grid, y_grid, val_v_grid, 100, cmap='seismic')
+                    plt.quiver(x_grid, y_grid, grad_x, grad_y, color='black', scale=1, width=0.002,scale_units='xy',)
+                    plt.xlim([-4, 4])
+                    plt.ylim([-4, 4])
+                    plt.colorbar(label='Interpolated scalar field')
+                    plt.title('Gradient field of val_v')
+                    plt.tight_layout()
+                    plt.savefig(savepath + f"/step_{step}_epoch_{epoch}_gradient_grid.png", dpi=150)
+                    plt.close()
+'''

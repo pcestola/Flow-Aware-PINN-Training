@@ -65,7 +65,7 @@ class HeatEquation(ResidualCalculator):
     def __init__(self, alpha:float=1.0):
         self.alpha = alpha
 
-    def compute_residual(self, u, x, t):
+    def compute_residual(self, u, t, x):
         u_t = gradient(u, (t,))
         u_xx = gradient(u, (x,x))
         return u_t - self.alpha * u_xx

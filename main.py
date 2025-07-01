@@ -227,7 +227,7 @@ def main():
             ckpt_interval = cfg["checkpoint"]["interval"]
         )
 
-        flops, errors = trainer.train_dot_prod(
+        flops, errors = trainer.train(
             bulk_data=bulk_data,
             bdry_data=boundary_data,
             init_data=initial_data,
@@ -240,10 +240,10 @@ def main():
             extra_epochs=cfg["decomposition"]["epochs_extra"],
             lr_start=float(cfg["training"]["lr"]),
             ckpt=cfg["checkpoint"]["enabled"],
-            savepath=img_dir,
-            mesh = mesh,
-            time_axis = cfg["decomposition"]["time_axis"],
-            boundary_type = cfg["decomposition"]["type"]
+            #savepath=img_dir,
+            #mesh = mesh,
+            #time_axis = cfg["decomposition"]["time_axis"],
+            #boundary_type = cfg["decomposition"]["type"]
         )
         
         # Results
