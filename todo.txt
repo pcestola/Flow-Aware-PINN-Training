@@ -1,21 +1,13 @@
 
-!!!! CAPIRE COSA FARE QUANDO LA DOMAIN DEDCOMPOSITION LASCIA DEGLI STEP VUOTI!!!!
----> ATTUALMENTE IL TRAIN VA IN ERRORE
-
-!!! SISTEMARE LA CONFIG AD UNA COSA ACCETTABILE, IL LR?!!!!
-
-Le geometrie complesse suggeriscono di: imparare prima boundary e initial
-e poi bulk (mantenendo stabili le altre due).
-
-Aggiungi loss di classificazione
-
-Controlla che il conteggio dei flops sia corretto
-
-Per avere il grafico (flops vs error) corretto, devi fare checkpoint in base
-ai flop consumati (ogni tot) non in base all'epoca., altrimenti usa interpolazione
-lineare.
-
 Implementa un sistema che aggiorna automaticamente i pesi dei termini di loss durante il training, per esempio:
 - SoftAdapt (Heydari et al.)
 - GradNorm (Chen et al.)
 - NTK-based reweighting (Wang et al. 2021)
+
+capisci che lr usare (??)
+
+capisci quante epoche per step usare (automatico/non automatico)
+
+calcola i risultati
+
+sistema i flops delle cose fatte in pinnacle

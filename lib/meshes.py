@@ -124,7 +124,8 @@ def progressive_domain_decomposition(
         raise ValueError('unsupported scheduler')
     
     if submeshes:
-        fd = d[mesh.faces].mean(axis=1)
+        #fd = d[mesh.faces].mean(axis=1)
+        fd = d[mesh.faces].min(axis=1)
         subs = []
         for i in range(steps):
             m = (fd >= i/steps) & (fd < (i+1)/steps)
@@ -273,6 +274,72 @@ def get_progressive_dataset(
         initial_points = None
 
     return bulk_points, boundary_points, initial_points, idxs, sched
+
+
+def get_progressive_dataset_bhv(
+    mesh,
+    epochs: int = 100,
+    steps: int = 10,
+    time_axis: int = -1,
+    boundary_type: str = "all",
+    bulk_n: int = 1000,
+    boundary_n: int = 100,
+    init_n: int = 0,
+    preview=False):
+
+    assert boundary_type in {"initial", "boundary", "all"}
+
+    boundary = get_topological_boundary(mesh)
+
+    if time_axis >= 0:
+        boundary_classes = classify_boundary(mesh, time_axis=time_axis)
+        initial_boundary = boundary[boundary_classes == 0]
+        boundary = boundary[boundary_classes == 1]
+    else:
+        initial_boundary = None
+
+    # 1. Sample bulk points
+    bulk_points = sample_points_on_mesh_poisson_disk(mesh, bulk_n)
+
+    # 2. Compute geodesic distance
+    if boundary_type == "all":
+        ref_boundary = boundary if initial_boundary is None else np.vstack((initial_boundary, boundary))
+    elif boundary_type == "boundary":
+        ref_boundary = boundary
+    elif boundary_type == "initial":
+        ref_boundary = initial_boundary
+    distance_map = get_geodesic_distance(mesh, ref_boundary)
+
+    # 3. Classify faces by min vertex distance
+    bins = np.linspace(0, 1, steps + 1)
+    faces_distance = distance_map[mesh.faces].min(axis=1)
+    faces_class = np.clip(np.digitize(faces_distance, bins), 0, steps) - 1
+
+    # 4. Classify points using BVH
+    _, _, face_ids = mesh.nearest.on_surface(np.hstack((bulk_points, np.zeros((bulk_points.shape[0], 1)))))
+    cls = faces_class[face_ids]
+
+    # 5. Sort points by class
+    sorted_idx = np.argsort(cls)
+    bulk_points = bulk_points[sorted_idx]
+    cls = cls[sorted_idx]
+    counts = np.bincount(cls, minlength=steps+1)
+    idxs = np.cumsum(counts[counts > 0])
+
+    # Scheduler lineare
+    sched = list(np.linspace(0, epochs, steps + 1, dtype=int)[1:])
+
+    # Campionamento dei punti di bordo
+    boundary_points = sample_points_on_boundary(mesh, boundary, boundary_n)
+
+    # Campionamento iniziale se richiesto
+    if init_n > 0 and initial_boundary is not None:
+        initial_points = sample_points_on_boundary(mesh, initial_boundary, init_n)
+    else:
+        initial_points = None
+
+    return bulk_points, boundary_points, initial_points, idxs, sched
+
 
 '''
     GRAPHIC
