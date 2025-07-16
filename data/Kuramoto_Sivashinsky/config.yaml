@@ -4,22 +4,24 @@ equation: "kuramoto"
 
 # simple | siren
 model:
-  type: "simple"
+  type: "siren"
   dims: [2, 100, 100, 100, 100, 100, 1]
 
 decomposition:
   steps: 1
   time_axis: 0
   type: "initial"
+  epochs_division: "exponential"
+  epochs_extra: 0
 
 mesh:
-  bulk_points: 2000
-  boundary_points: 1000
-  initial_points: 1000
+  bulk_points: 1000
+  boundary_points: 500
+  initial_points: 500
 
 training:
   scheduler: false
-  epochs: 12000
+  epochs: 10000
   lr: 1e-3
   weights:
     bulk: 1.0

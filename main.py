@@ -13,7 +13,7 @@ from lib.pinn import (
     PINN, LaplaceEquation,
     Burgers_1D, WaveEquation, HeatEquation,
     EikonalEquation, Poisson_2D_C, Poisson_2D_CG,
-    Kuramoto_Shivashinsky, Example
+    Kuramoto_Shivashinsky, Example, NS_2D_C, NS_2D_CG
 )
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
 from lib.gif import generate_gif
@@ -52,7 +52,9 @@ def get_equation(name:str):
         'eikonal': EikonalEquation,
         'burger': Burgers_1D,
         'kuramoto': Kuramoto_Shivashinsky,
-        'example': Example
+        'example': Example,
+        'ns_1': NS_2D_C,
+        'ns_2': NS_2D_CG
     }
     if name not in eqs:
         raise ValueError(f"Equazione sconosciuta: {name}")
@@ -92,7 +94,8 @@ def main():
         torch.manual_seed(seed)
         np.random.seed(seed)
 
-        name = cfg["name"]+'_'+cfg["decomposition"]["epochs_division"]+'_'+str(cfg["decomposition"]["epochs_extra"])
+        #name = cfg["name"]+'_'+cfg["decomposition"]["epochs_division"]+'_'+str(cfg["decomposition"]["epochs_extra"])
+        name = cfg["name"]
         save_dir = os.path.join("results", name, f"run_{run_id}")
         log_dir = os.path.join(save_dir, "logging")
         img_dir = os.path.join(save_dir, "images")
@@ -140,6 +143,7 @@ def main():
         equation = get_equation(cfg["equation"])
 
         # Bulk
+        # TODO: non dovresti metterci anche i boundary?
         bulk_data = (
             torch.from_numpy(bulk_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
             torch.from_numpy(bulk_points[:, 1:2]).to(device=device, dtype=torch.float32).requires_grad_()
@@ -175,29 +179,12 @@ def main():
             TEST DATA
         '''
         data = np.loadtxt(os.path.join(args.path, 'solution.txt'), comments='%', dtype=float)
-        test_data = tuple(
-            torch.from_numpy(data[:, i:i+1]).to(device=device, dtype=torch.float32)
-            for i in range(data.shape[1])
+        test_data = (
+            torch.from_numpy(data[:, 0:1]).to(device=device, dtype=torch.float32),
+            torch.from_numpy(data[:, 1:2]).to(device=device, dtype=torch.float32),
+            torch.from_numpy(data[:, 2:]).to(device=device, dtype=torch.float32)
         )
         del data
-
-        '''
-        import matplotlib.pyplot as plt
-        #plt.scatter(test_data[0].detach().cpu(),test_data[1].detach().cpu(),c=test_data[2].detach().cpu())
-        t = test_data[0].detach().cpu().numpy()
-        x = test_data[1].detach().cpu().numpy()
-        u = test_data[2].detach().cpu().numpy()
-        mask1 = x==0
-        mask2 = x==2*np.pi
-        t = np.concatenate((t[mask1],t[mask2]),axis=0).reshape((-1,1))
-        x = np.concatenate((x[mask1],x[mask2]),axis=0).reshape((-1,1))
-        u = np.concatenate((u[mask1],u[mask2]),axis=0).reshape((-1,1))
-        boundary_data = (
-            torch.from_numpy(t).to(device=device, dtype=torch.float32).requires_grad_(),
-            torch.from_numpy(x).to(device=device, dtype=torch.float32).requires_grad_(),        
-            torch.from_numpy(u).to(device=device, dtype=torch.float32)
-        )
-        '''
 
         '''
             MODELLO
@@ -247,9 +234,17 @@ def main():
         )
         
         # Results
+        solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
+        solution = solution.detach().cpu().flatten().numpy()
+        visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["steps"]}'))
+        
+        # Results NS
         #solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
-        #solution = solution.detach().cpu().flatten().numpy()
-        #visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["steps"]}'))
+        #solution = solution.detach().cpu().numpy()
+        #vel = np.sqrt(solution[:,0]**2+solution[:,1]**2).flatten()
+        #visualize_scalar_field(mesh, vel, save_path=os.path.join(save_dir,f'velocity_{cfg["decomposition"]["steps"]}'))
+        #pres = solution[:,2].flatten()
+        #visualize_scalar_field(mesh, pres, save_path=os.path.join(save_dir,f'pression_{cfg["decomposition"]["steps"]}'))
 
         #generate_gif(img_dir, save_dir, cfg["decomposition"]["steps"])
 

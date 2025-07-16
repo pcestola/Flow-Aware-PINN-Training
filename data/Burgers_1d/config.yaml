@@ -1,4 +1,4 @@
-name: burgers_1d
+name: burgers_1d_fregus_
 
 equation: "burger"
 
@@ -10,7 +10,7 @@ model:
 decomposition:
   steps: 1
   time_axis: 0
-  type: "initial"
+  type: "all"
   epochs_division: "exponential"
   epochs_extra: 4000
 

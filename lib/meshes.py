@@ -66,7 +66,8 @@ def get_topological_boundary(mesh:trimesh.Trimesh) -> np.ndarray:
     boundary = edges[idx[counts == 1]]
     return boundary
 
-def classify_boundary(mesh:trimesh.Trimesh, time_axis:int):
+# NOTE: prima di navier stokes
+def classify_boundary_old(mesh:trimesh.Trimesh, time_axis:int):
     
     minimum = np.min(mesh.vertices[:, time_axis])
     classes = []
@@ -81,6 +82,30 @@ def classify_boundary(mesh:trimesh.Trimesh, time_axis:int):
         if np.isclose(t1, minimum) and np.isclose(t2, minimum):
             classes.append(0)
         elif np.isclose(t1, t2):
+            classes.append(2)
+        else:
+            classes.append(1)
+
+    classes = np.array(classes)
+
+    return classes
+
+def classify_boundary(mesh:trimesh.Trimesh, time_axis:int):
+    
+    minimum = np.min(mesh.vertices[:, time_axis])
+    maximum = np.max(mesh.vertices[:, time_axis])
+    classes = []
+
+    edges = get_topological_boundary(mesh)
+
+    for edge in edges:
+        p1 = mesh.vertices[edge[0]]
+        p2 = mesh.vertices[edge[1]]
+        t1, t2 = p1[time_axis], p2[time_axis]
+
+        if np.isclose(t1, minimum) and np.isclose(t2, minimum):
+            classes.append(0)
+        elif np.isclose(t1, maximum) and np.isclose(t2, maximum):
             classes.append(2)
         else:
             classes.append(1)
@@ -176,33 +201,46 @@ def sample_points_on_mesh_poisson_disk(mesh:trimesh.Trimesh, num_samples:int, ra
     return rand_positions[:,:2]
 
 def sample_points_on_boundary(mesh: trimesh.Trimesh, boundary: np.ndarray, n: int) -> np.ndarray:
+    # Estrai i vertici 2D
     v2d = mesh.vertices[:, :2]
-    s, e = v2d[boundary[:, 0]], v2d[boundary[:, 1]]
 
-    # Lunghezza di ogni segmento
+    # Estrai i segmenti (archi)
+    s = v2d[boundary[:, 0]]
+    e = v2d[boundary[:, 1]]
+
+    # Calcola lunghezza di ciascun segmento
     seg_lengths = np.linalg.norm(e - s, axis=1)
     total_length = np.sum(seg_lengths)
 
-    # Posizioni cumulative lungo il bordo (inizio di ogni segmento)
-    cumulative = np.insert(np.cumsum(seg_lengths), 0, 0.0)
-
-    # Punti equispaziati lungo la lunghezza totale
+    # Punti equispaziati lungo tutto il contorno
     target_distances = np.linspace(0, total_length, n, endpoint=False)
 
+    # Posizioni cumulative dei segmenti
+    cumulative = np.insert(np.cumsum(seg_lengths), 0, 0.0)
+
+    # Costruzione dei punti equispaziati
     points = []
     seg_idx = 0
     for d in target_distances:
-        # Trova il segmento corrispondente alla distanza
-        while cumulative[seg_idx+1] < d:
+        # Avanza finché trovi il segmento giusto
+        while seg_idx + 1 < len(cumulative) and cumulative[seg_idx + 1] < d:
             seg_idx += 1
 
-        # Interpolazione lineare su quel segmento
+        # Interpolazione lineare
         local_d = d - cumulative[seg_idx]
-        t = local_d / seg_lengths[seg_idx]
+        t = local_d / seg_lengths[seg_idx] if seg_lengths[seg_idx] > 0 else 0.0
         pt = (1 - t) * s[seg_idx] + t * e[seg_idx]
         points.append(pt)
 
-    return np.array(points)
+    # Aggiungi estremi di ogni arco
+    arc_endpoints = np.vstack([s, e])  # shape (2M, 2)
+
+    # Combina e rimuovi duplicati (se desiderato)
+    all_points = np.vstack([points, arc_endpoints])
+    all_points = np.unique(all_points, axis=0)
+
+    return all_points
+
 
 def get_progressive_dataset(
     mesh,
@@ -219,15 +257,13 @@ def get_progressive_dataset(
 
     if time_axis >= 0:
         boundary_classes = classify_boundary(mesh, time_axis=time_axis)
-
-        #if preview:
-            #visualize_boundary(mesh, boundary, boundary_classes)
-
         initial_boundary = boundary[boundary_classes == 0]
         boundary = boundary[boundary_classes == 1]
+    # NOTE: da scrivere meglio e generalizzare
+    elif boundary_type == 'initial':
+        boundary_classes = classify_boundary(mesh, time_axis=time_axis)
+        initial_boundary = boundary[boundary_classes == 0]
     else:
-        #if preview:
-            #visualize_boundary(mesh, boundary, np.zeros(boundary.shape[0]))
         initial_boundary = None
 
     # 1. Generazione dei punti bulk sull'intero dominio

@@ -189,7 +189,7 @@ class Poisson_2D_CG(ResidualCalculator):
         else:
             condition = np.ones((data.shape[0],1))
             mask = (np.abs(x)>0.98) | (np.abs(y)>0.98)
-            condition[mask] = 1.0
+            condition[mask] = 0.2
             return condition
 
 class Example(ResidualCalculator):
@@ -237,6 +237,138 @@ class Kuramoto_Shivashinsky(ResidualCalculator):
         else:
             return np.zeros((data.shape[0],1))
 
+class NS_2D_C(ResidualCalculator):
+    def __init__(self, nu: float = 0.01):
+        super().__init__()
+        self.nu = nu
+
+    def compute_residual(self, u_pred, x, y):
+        # u_pred: (N, 3) => [u, v, p]
+        u = u_pred[:, 0:1]
+        v = u_pred[:, 1:2]
+        p = u_pred[:, 2:3]
+
+        # Gradienti del campo vettoriale e della pressione
+        u_x = gradient(u, (x,))
+        u_y = gradient(u, (y,))
+        v_x = gradient(v, (x,))
+        v_y = gradient(v, (y,))
+
+        p_x = gradient(p, (x,))
+        p_y = gradient(p, (y,))
+
+        u_xx = gradient(u, (x,x))
+        u_yy = gradient(u, (y,y))
+        v_xx = gradient(v, (x,x))
+        v_yy = gradient(v, (y,y))
+
+        # Equazioni di Navier-Stokes
+        res_u = u * u_x + v * u_y + p_x - self.nu * (u_xx + u_yy)
+        res_v = u * v_x + v * v_y + p_y - self.nu * (v_xx + v_yy)
+
+        # Incompressibilità (divergenza zero)
+        res_div = u_x + v_y
+
+        return torch.cat([res_u, res_v, res_div], dim=1)
+
+    def boundary_condition(self, data):
+        x = data[:, 0]
+        y = data[:, 1]
+        if isinstance(x, torch.Tensor):
+            condition = torch.full((data.shape[0], 3), float('nan'))  # NaN = "non imposto"
+            # inflow
+            mask = y == 1.0
+            condition[mask, 0] = 4 * x[mask] * (1 - x[mask])  # u_x inlet
+            condition[mask, 1] = 0.0                          # u_y inlet
+            # walls
+            mask = (y == 0.0) | (x == 0.0) | (x == 1.0)
+            condition[mask, 0] = 0.0
+            condition[mask, 1] = 0.0
+            # pressure
+            mask = (x == 0.0) & (y == 0.0)
+            condition[mask, 2] = 0.0
+            return condition
+        else:
+            condition = np.full((data.shape[0], 3), np.nan)
+            # inflow
+            mask = y == 1.0
+            condition[mask, 0] = 4 * x[mask] * (1 - x[mask])  # u_x inlet
+            condition[mask, 1] = 0.0                          # u_y inlet
+            # walls
+            mask = (y == 0.0) | (x == 0.0) | (x == 1.0)
+            condition[mask, 0] = 0.0
+            condition[mask, 1] = 0.0
+            # pressure
+            mask = (x == 0.0) & (y == 0.0)
+            condition[mask, 2] = 0.0
+            return condition
+
+class NS_2D_CG(ResidualCalculator):
+    def __init__(self, nu: float = 0.01):
+        super().__init__()
+        self.nu = nu
+
+    def compute_residual(self, u_pred, x, y):
+        # u_pred: (N, 3) => [u, v, p]
+        u = u_pred[:, 0:1]
+        v = u_pred[:, 1:2]
+        p = u_pred[:, 2:3]
+
+        # Gradienti del campo vettoriale e della pressione
+        u_x = gradient(u, (x,))
+        u_y = gradient(u, (y,))
+        v_x = gradient(v, (x,))
+        v_y = gradient(v, (y,))
+
+        p_x = gradient(p, (x,))
+        p_y = gradient(p, (y,))
+
+        u_xx = gradient(u, (x,x))
+        u_yy = gradient(u, (y,y))
+        v_xx = gradient(v, (x,x))
+        v_yy = gradient(v, (y,y))
+
+        # Equazioni di Navier-Stokes
+        res_u = u * u_x + v * u_y + p_x - self.nu * (u_xx + u_yy)
+        res_v = u * v_x + v * v_y + p_y - self.nu * (v_xx + v_yy)
+
+        # Incompressibilità (divergenza zero)
+        res_div = u_x + v_y
+
+        return torch.cat([res_u, res_v, res_div], dim=1)
+
+    def boundary_condition(self, data):
+        x = data[:, 0]
+        y = data[:, 1]
+        if isinstance(x, torch.Tensor):
+            condition = torch.full((data.shape[0], 3), float('nan'))  # NaN = "non imposto"
+            # walls
+            mask = x != 4.0
+            condition[mask, 0] = 0.0
+            condition[mask, 1] = 0.0
+            # inflow
+            mask = x == 0.0
+            condition[mask, 0] = 4 * y[mask] * (1 - y[mask])  # u_x inlet
+            condition[mask, 1] = 0.0                          # u_y inlet
+            # outflow
+            mask = x == 4.0
+            condition[mask, 2] = 0.0
+            return condition
+        else:
+            condition = np.full((data.shape[0], 3), np.nan)
+            # walls
+            mask = x != 4.0
+            condition[mask, 0] = 0.0
+            condition[mask, 1] = 0.0
+            # inflow
+            mask = x == 0.0
+            condition[mask, 0] = 4 * y[mask] * (1 - y[mask])  # u_x inlet
+            condition[mask, 1] = 0.0                          # u_y inlet
+            # outflow
+            mask = x == 4.0
+            condition[mask, 2] = 0.0
+            return condition
+
 # PINN
 class PINN(nn.Module):
     def __init__(self, network:nn.Module, residual:ResidualCalculator):
@@ -251,24 +383,27 @@ class PINN(nn.Module):
         t, x = data
         u = self.forward(t, x)
         residual = self.residual.compute_residual(u, t, x)
-        return torch.mean(residual**2)
+        return torch.mean(torch.sum(residual**2, dim=1))
 
     def initial_loss(self, data:Tuple[torch.Tensor]):
         if len(data) == 3:
             t, x, u_true = data
             u = self.forward(t, x)
             residual = u - u_true
-            return torch.mean(residual**2)
+            return torch.mean(torch.sum(residual**2, dim=1))
         else:
             t, x, u_true, v_true = data
             u = self.forward(t, x)
             ut = gradient(u,(t,))
             residual1 = u - u_true
             residual2 = ut - v_true
-            return torch.mean(residual1**2) + torch.mean(residual2**2)
+            return torch.mean(torch.sum(residual1**2, dim=1)) + torch.mean(torch.sum(residual2**2, dim=1))
 
     def boundary_loss(self, data:Tuple[torch.Tensor]):
         t, x, u_true = data
         u = self.forward(t, x)
-        residual = u - u_true
-        return torch.mean(residual**2)
+        residual = 0.0
+        for i in range(u_true.shape[1]):
+            mask = ~torch.isnan(u_true[:,i])
+            residual += torch.mean((u[mask,i] - u_true[mask,i])**2)
+        return residual
