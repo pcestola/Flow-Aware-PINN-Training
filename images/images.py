@@ -8,7 +8,7 @@ import subprocess
 import numpy as np
 
 from lib.models import SimpleNN, SIREN
-from lib.train import TrainerStep
+from lib.trainers import TrainerStep
 from lib.pinn import (
     PINN, LaplaceEquation,
     Burgers_1D, WaveEquation, HeatEquation,
@@ -16,7 +16,7 @@ from lib.pinn import (
     Kuramoto_Shivashinsky, Example
 )
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
-from lib.gif import generate_gif
+from lib.gif_utils import generate_gif
 
 from lib.plotter import Plotter
 

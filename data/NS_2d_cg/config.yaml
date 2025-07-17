@@ -15,8 +15,8 @@ decomposition:
   epochs_extra: 2000
 
 mesh:
-  bulk_points: 1500
-  boundary_points: 500
+  bulk_points: 2000
+  boundary_points: 750
   initial_points: 0
 
 training:

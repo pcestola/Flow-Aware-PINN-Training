@@ -147,7 +147,7 @@ def progressive_domain_decomposition(
         sched = list(np.linspace(0, epochs, steps + 1, dtype=int)[1:])
     else:
         raise ValueError('unsupported scheduler')
-    
+
     if submeshes:
         #fd = d[mesh.faces].mean(axis=1)
         fd = d[mesh.faces].min(axis=1)
@@ -242,7 +242,7 @@ def sample_points_on_boundary(mesh: trimesh.Trimesh, boundary: np.ndarray, n: in
     return all_points
 
 
-def get_progressive_dataset(
+def get_progressive_dataset_old(
     mesh,
     epochs: int = 100,
     steps: int = 10,
@@ -299,6 +299,75 @@ def get_progressive_dataset(
 
     # Indici per separare le classi
     idxs = np.cumsum(np.unique(cls, return_counts=True)[1])
+
+    # Campionamento dei punti di bordo
+    boundary_points = sample_points_on_boundary(mesh, boundary, boundary_n)
+
+    # Campionamento iniziale se richiesto
+    if init_n > 0 and initial_boundary is not None:
+        initial_points = sample_points_on_boundary(mesh, initial_boundary, init_n)
+    else:
+        initial_points = None
+
+    return bulk_points, boundary_points, initial_points, idxs, sched
+
+
+def get_progressive_dataset(
+    mesh,
+    epochs: int = 100,
+    steps: int = 10,
+    time_axis: int = -1,
+    boundary_type: str = "all",
+    bulk_n: int = 1000,
+    boundary_n: int = 100,
+    init_n: int = 0,
+    preview=False):
+
+    boundary = get_topological_boundary(mesh)
+
+    if time_axis >= 0:
+        boundary_classes = classify_boundary(mesh, time_axis=time_axis)
+        initial_boundary = boundary[boundary_classes == 0]
+        boundary = boundary[boundary_classes == 1]
+    # NOTE: da scrivere meglio e generalizzare
+    elif boundary_type == 'initial':
+        boundary_classes = classify_boundary(mesh, time_axis=time_axis)
+        initial_boundary = boundary[boundary_classes == 0]
+    else:
+        initial_boundary = None
+
+    # 1. Generazione dei punti bulk sull'intero dominio
+    bulk_points = sample_points_on_mesh_poisson_disk(mesh, bulk_n)
+
+    # 2. Mappa di distanza geodetica su tutti i vertici
+    if boundary_type == "initial":
+        distance_map = get_geodesic_distance(mesh, initial_boundary)
+    elif boundary_type == "boundary":
+        distance_map = get_geodesic_distance(mesh, boundary)
+    elif boundary_type == "all":
+        if initial_boundary is not None:
+            distance_map = get_geodesic_distance(mesh, np.vstack((initial_boundary,boundary)))
+        else:
+            distance_map = get_geodesic_distance(mesh, boundary)
+
+    distance_map = distance_map[mesh.faces].min(axis=1)
+    bins = np.linspace(0, 1, steps + 1)
+    faces_class = np.clip(np.digitize(distance_map, bins), 0, steps)
+
+    points_3d = np.concatenate((bulk_points, np.zeros((bulk_points.shape[0],1))),axis=1)
+    _, _, faces_id = mesh.nearest.on_surface(points_3d)
+    points_class = faces_class[faces_id]
+
+    # Ordina i punti in base alla classe
+    sorted_idx = np.argsort(points_class)
+    bulk_points = bulk_points[sorted_idx]
+    points_class = points_class[sorted_idx]
+
+    # Scheduler lineare
+    sched = list(np.linspace(0, epochs, steps + 1, dtype=int)[1:])
+
+    # Indici per separare le classi
+    idxs = np.cumsum(np.unique(points_class, return_counts=True)[1])
 
     # Campionamento dei punti di bordo
     boundary_points = sample_points_on_boundary(mesh, boundary, boundary_n)

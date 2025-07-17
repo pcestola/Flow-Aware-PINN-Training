@@ -1,3 +1,4 @@
+# main.py
 import os
 import yaml
 import torch
@@ -8,19 +9,17 @@ import subprocess
 import numpy as np
 
 from lib.models import SimpleNN, SIREN
-from lib.train import TrainerStep
+from lib.trainer import TrainerStep
 from lib.pinn import (
-    PINN, LaplaceEquation,
-    Burgers_1D, WaveEquation, HeatEquation,
-    EikonalEquation, Poisson_2D_C, Poisson_2D_CG,
-    Kuramoto_Shivashinsky, Example, NS_2D_C, NS_2D_CG
+    PINN, LaplaceEquation, Burgers_1D, WaveEquation, HeatEquation,
+    Poisson_2D_C, Poisson_2D_CG, NS_2D_C, NS_2D_CG
 )
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
-from lib.gif import generate_gif
+from lib.gif_utils import generate_gif
+#from lib.plotter import Plotter
 
-from lib.plotter import Plotter
 
-# UTILS
+# ---------------- UTILS ---------------- #
 def parse_args():
     parser = argparse.ArgumentParser(description="Addestramento PINN da config YAML")
     parser.add_argument("--path", type=str, help="Path alla cartella")
@@ -49,10 +48,7 @@ def get_equation(name:str):
         'laplace': LaplaceEquation,
         'poisson_1': Poisson_2D_C,
         'poisson_2': Poisson_2D_CG,
-        'eikonal': EikonalEquation,
         'burger': Burgers_1D,
-        'kuramoto': Kuramoto_Shivashinsky,
-        'example': Example,
         'ns_1': NS_2D_C,
         'ns_2': NS_2D_CG
     }
@@ -81,7 +77,141 @@ def get_free_gpu(exclude_gpu=2):
         print(f"Errore nel controllo GPU: {e}")
         return None
 
-# MAIN
+
+# ---------------- PIPELINE ---------------- #
+def setup_experiment(cfg, args, run_id, seed):
+    name = cfg["name"]
+    save_dir = os.path.join("results", name, f"run_{run_id}")
+    log_dir = os.path.join(save_dir, "logging")
+    img_dir = os.path.join(save_dir, "images")
+    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(log_dir, exist_ok=True)
+    os.makedirs(img_dir, exist_ok=True)
+
+    if cfg["checkpoint"]["enabled"]:
+        ckpt_dir = os.path.join(save_dir, "checkpoint")
+        os.makedirs(ckpt_dir, exist_ok=True)
+    else:
+        ckpt_dir = None
+
+    if cfg["logging"]["enabled"]:
+        setup_logging(cfg["logging"], log_dir, cfg["decomposition"]["steps"])
+        logging.info(f"Esecuzione {run_id+1}/{args.repeat} con seed={seed}")
+
+    if torch.cuda.is_available():
+        if args.device >= 0:
+            gpu_id = args.device
+        else:
+            gpu_id = get_free_gpu()
+        device = torch.device(f"cuda:{gpu_id}")
+        logging.info(f'Using GPU: {device}')
+    else:
+        device = torch.device("cpu")
+        logging.info('Using CPU')
+    
+    return device, ckpt_dir, log_dir, save_dir
+
+def prepare_data(cfg, args, device):
+    mesh, bulk_points, boundary_points, initial_points, indices, scheduler = mesh_preprocessing(
+            path = os.path.join(args.path,'mesh.obj'),
+            epochs          = cfg["training"]["epochs"],
+            steps           = cfg["decomposition"]["steps"],
+            time_axis       = cfg["decomposition"]["time_axis"],
+            boundary_type   = cfg["decomposition"]["type"],
+            bulk_n          = cfg["mesh"]["bulk_points"],
+            boundary_n      = cfg["mesh"]["boundary_points"],
+            init_n          = cfg["mesh"]["initial_points"],
+            preview         = False
+        )
+    
+    equation = get_equation(cfg["equation"])
+
+    # Bulk Data
+    bulk_data = (
+        torch.from_numpy(bulk_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
+        torch.from_numpy(bulk_points[:, 1:2]).to(device=device, dtype=torch.float32).requires_grad_()
+    )
+    data_min = bulk_points.min(axis=0)
+    data_max = bulk_points.max(axis=0)
+
+    # Boundary Data
+    if not boundary_points is None:
+        boundary_value = equation.boundary_condition(boundary_points)
+        boundary_data = (
+            torch.from_numpy(boundary_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
+            torch.from_numpy(boundary_points[:, 1:2]).to(device=device, dtype=torch.float32).requires_grad_(),        
+            torch.from_numpy(boundary_value).to(device=device, dtype=torch.float32)
+        )
+    else:
+        boundary_data = None
+
+    # Initial Data
+    if not initial_points is None:
+        initial_value, initial_velocity = equation.initial_condition(initial_points)
+        if not initial_velocity is None:
+            initial_data = (
+                torch.from_numpy(initial_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
+                torch.from_numpy(initial_points[:, 1:2]).to(device=device, dtype=torch.float32).requires_grad_(),
+                torch.from_numpy(initial_value).to(device=device, dtype=torch.float32),
+                torch.from_numpy(initial_velocity).to(device=device, dtype=torch.float)
+            )
+        else:
+            initial_data = (
+                torch.from_numpy(initial_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
+                torch.from_numpy(initial_points[:, 1:2]).to(device=device, dtype=torch.float32).requires_grad_(),
+                torch.from_numpy(initial_value).to(device=device, dtype=torch.float32)
+            )
+    else:
+        initial_data = None
+
+    # Test Data
+    test_points_value = np.loadtxt(os.path.join(args.path, 'solution.txt'), comments='%', dtype=float)
+    test_data = (
+        torch.from_numpy(test_points_value[:, 0:1]).to(device=device, dtype=torch.float32),
+        torch.from_numpy(test_points_value[:, 1:2]).to(device=device, dtype=torch.float32),
+        torch.from_numpy(test_points_value[:, 2:]).to(device=device, dtype=torch.float32)
+    )
+
+    return mesh, bulk_data, boundary_data, initial_data, test_data, data_min, data_max, indices, equation
+
+def build_network(cfg, data_min=None, data_max=None):
+    net_type = cfg["model"]["type"]
+    if net_type == 'simple':
+        network = SimpleNN(cfg["model"]["dims"], data_min, data_max)
+    elif net_type == 'siren':
+        network = SIREN(cfg["model"]["dims"])
+    return network
+
+def run_train(cfg, trainer, pinn, device, bulk_data, boundary_data, initial_data, test_data, mesh, indices, save_dir, plot=False):
+
+    flops, errors = trainer.train(
+        bulk_data=bulk_data,
+        bdry_data=boundary_data,
+        init_data=initial_data,
+        test_data=test_data,
+        indices=indices,
+        weights=cfg["training"]["weights"],
+        epochs=int(cfg["training"]["epochs"]),
+        steps=int(cfg["decomposition"]["steps"]),
+        divide_mode=cfg["decomposition"]["epochs_division"],
+        extra_epochs=cfg["decomposition"]["epochs_extra"],
+        lr_start=float(cfg["training"]["lr"]),
+        ckpt=cfg["checkpoint"]["enabled"],
+        #savepath=img_dir,
+        #mesh = mesh,
+        #time_axis = cfg["decomposition"]["time_axis"],
+        #boundary_type = cfg["decomposition"]["type"]
+    )
+    
+    # Results
+    if plot:
+        solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
+        solution = solution.detach().cpu().flatten().numpy()
+        visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["steps"]}'))
+
+    return flops, errors    
+
+
 def main():
     args = parse_args()
     cfg = load_config(os.path.join(args.path,'config.yaml'))
@@ -94,119 +224,24 @@ def main():
         torch.manual_seed(seed)
         np.random.seed(seed)
 
-        #name = cfg["name"]+'_'+cfg["decomposition"]["epochs_division"]+'_'+str(cfg["decomposition"]["epochs_extra"])
-        name = cfg["name"]
-        save_dir = os.path.join("results", name, f"run_{run_id}")
-        log_dir = os.path.join(save_dir, "logging")
-        img_dir = os.path.join(save_dir, "images")
-        os.makedirs(save_dir, exist_ok=True)
-        os.makedirs(log_dir, exist_ok=True)
-        os.makedirs(img_dir, exist_ok=True)
+        # Folders Setup
+        device, ckpt_dir, log_dir, save_dir = setup_experiment(cfg, args, run_id, seed)
 
-        if cfg["checkpoint"]["enabled"]:
-            ckpt_dir = os.path.join(save_dir, "checkpoint")
-            os.makedirs(ckpt_dir, exist_ok=True)
-        else:
-            ckpt_dir = None
+        # Data Preparation
+        mesh, bulk_data, boundary_data, initial_data, test_data, data_min, data_max, indices, equation = prepare_data(cfg, args, device)
 
-        # Logging locale
-        if cfg["logging"]["enabled"]:
-            setup_logging(cfg["logging"], log_dir, cfg["decomposition"]["steps"])
-            logging.info(f"Esecuzione {run_id+1}/{args.repeat} con seed={seed}")
-
-        if torch.cuda.is_available():
-            #gpu_id = get_free_gpu()
-            gpu_id = args.device
-            device = torch.device(f"cuda:{gpu_id}")
-            logging.info(f'Using GPU: {device}')
-        else:
-            device = torch.device("cpu")
-            logging.info('Using CPU')
-
-        # Caricamento dati mesh
-        mesh, bulk_points, boundary_points, initial_points, indices, scheduler = mesh_preprocessing(
-            path = os.path.join(args.path,'mesh.obj'),
-            epochs = cfg["training"]["epochs"],
-            steps = cfg["decomposition"]["steps"],
-            time_axis = cfg["decomposition"]["time_axis"],
-            boundary_type = cfg["decomposition"]["type"],
-            bulk_n = cfg["mesh"]["bulk_points"],
-            boundary_n = cfg["mesh"]["boundary_points"],
-            init_n = cfg["mesh"]["initial_points"],
-            preview=False
-        )
-
-        '''
-            Costruzione dati bulk e boundary
-        '''
-        # Caricamento equazione
-        equation = get_equation(cfg["equation"])
-
-        # Bulk
-        # TODO: non dovresti metterci anche i boundary?
-        bulk_data = (
-            torch.from_numpy(bulk_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
-            torch.from_numpy(bulk_points[:, 1:2]).to(device=device, dtype=torch.float32).requires_grad_()
-        )
-        data_min = bulk_points.min(axis=0)
-        data_max = bulk_points.max(axis=0)
-        del bulk_points
-
-        # Boundary
-        boundary_value = equation.boundary_condition(boundary_points)
-        boundary_data = (
-            torch.from_numpy(boundary_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
-            torch.from_numpy(boundary_points[:, 1:2]).to(device=device, dtype=torch.float32).requires_grad_(),        
-            torch.from_numpy(boundary_value).to(device=device, dtype=torch.float32)
-        )
-        del boundary_points
-
-        # Initial
-        if not initial_points is None:
-            initial_value = equation.initial_condition(initial_points)
-            initial_vel = np.zeros_like(initial_value)
-            initial_data = (
-                torch.from_numpy(initial_points[:, 0:1]).to(device=device, dtype=torch.float32).requires_grad_(),
-                torch.from_numpy(initial_points[:, 1:2]).to(device=device, dtype=torch.float32).requires_grad_(),
-                torch.from_numpy(initial_value).to(device=device, dtype=torch.float32),
-                torch.from_numpy(initial_vel).to(device=device, dtype=torch.float)
-            )
-            del initial_points
-        else:
-            initial_data = None
-
-        '''
-            TEST DATA
-        '''
-        data = np.loadtxt(os.path.join(args.path, 'solution.txt'), comments='%', dtype=float)
-        test_data = (
-            torch.from_numpy(data[:, 0:1]).to(device=device, dtype=torch.float32),
-            torch.from_numpy(data[:, 1:2]).to(device=device, dtype=torch.float32),
-            torch.from_numpy(data[:, 2:]).to(device=device, dtype=torch.float32)
-        )
-        del data
-
-        '''
-            MODELLO
-        '''
         # Costruzione modello
-        net_type = cfg["model"]["type"]
-        if net_type == 'simple':
-            network = SimpleNN(cfg["model"]["dims"], data_min, data_max)
-        elif net_type == 'siren':
-            network = SIREN(cfg["model"]["dims"])
+        network = build_network(cfg, data_min, data_max)
         
         # Costruzione PINN
         pinn = PINN(network, equation)
         pinn.to(device)
 
         # Plotter
-        #plotter = Plotter(network)
-        #plotter.prepare()
+        # plotter = Plotter(network)
+        # plotter.prepare()
 
-        '''
-        TRAINING
-        '''
+        # Trainer
         trainer = TrainerStep(
             pinn,
             device=device,
@@ -214,42 +249,33 @@ def main():
             ckpt_interval = cfg["checkpoint"]["interval"]
         )
 
-        flops, errors = trainer.train(
-            bulk_data=bulk_data,
-            bdry_data=boundary_data,
-            init_data=initial_data,
-            test_data=test_data,
-            indices=indices,
-            weights=cfg["training"]["weights"],
-            epochs=int(cfg["training"]["epochs"]),
-            steps=int(cfg["decomposition"]["steps"]),
-            divide=cfg["decomposition"]["epochs_division"],
-            extra_epochs=cfg["decomposition"]["epochs_extra"],
-            lr_start=float(cfg["training"]["lr"]),
-            ckpt=cfg["checkpoint"]["enabled"],
-            #savepath=img_dir,
-            #mesh = mesh,
-            #time_axis = cfg["decomposition"]["time_axis"],
-            #boundary_type = cfg["decomposition"]["type"]
-        )
-        
-        # Results
-        solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
-        solution = solution.detach().cpu().flatten().numpy()
-        visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["steps"]}'))
-        
-        # Results NS
-        #solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
-        #solution = solution.detach().cpu().numpy()
-        #vel = np.sqrt(solution[:,0]**2+solution[:,1]**2).flatten()
-        #visualize_scalar_field(mesh, vel, save_path=os.path.join(save_dir,f'velocity_{cfg["decomposition"]["steps"]}'))
-        #pres = solution[:,2].flatten()
-        #visualize_scalar_field(mesh, pres, save_path=os.path.join(save_dir,f'pression_{cfg["decomposition"]["steps"]}'))
-
-        #generate_gif(img_dir, save_dir, cfg["decomposition"]["steps"])
+        # Training
+        flops, errors = run_train(
+            cfg, trainer, pinn, device,
+            bulk_data, boundary_data, initial_data, test_data,
+            mesh, indices,
+            save_dir,
+            plot=False)
 
         with open(os.path.join(log_dir,f'error_{cfg["decomposition"]["steps"]}.pkl'), "wb") as f:
             pickle.dump((flops, errors), f)
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
+''' Results NS
+solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
+solution = solution.detach().cpu().numpy()
+vel = np.sqrt(solution[:,0]**2+solution[:,1]**2).flatten()
+visualize_scalar_field(mesh, vel, save_path=os.path.join(save_dir,f'velocity_{cfg["decomposition"]["steps"]}'))
+pres = solution[:,2].flatten()
+visualize_scalar_field(mesh, pres, save_path=os.path.join(save_dir,f'pression_{cfg["decomposition"]["steps"]}'))
+'''
+
+#generate_gif(img_dir, save_dir, cfg["decomposition"]["steps"])

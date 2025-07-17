@@ -51,9 +51,9 @@ class WaveEquation(ResidualCalculator):
     def initial_condition(self, data):
         x = data[:,1:2]
         if isinstance(x,torch.Tensor):
-            return torch.exp(-4*x**2)
+            return torch.exp(-4*x**2), torch.zeros_like(x)
         else:
-            return np.exp(-4*x**2)
+            return np.exp(-4*x**2), np.zeros_like(x)
     
     def boundary_condition(self, data):
         if isinstance(data,torch.Tensor):
