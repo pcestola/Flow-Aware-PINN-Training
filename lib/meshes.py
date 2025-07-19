@@ -329,27 +329,28 @@ def get_progressive_dataset(
         boundary_classes = classify_boundary(mesh, time_axis=time_axis)
         initial_boundary = boundary[boundary_classes == 0]
         boundary = boundary[boundary_classes == 1]
-    # NOTE: da scrivere meglio e generalizzare
+        if boundary_type == 'all':
+            information_boundary = np.vstack((initial_boundary,boundary))
+        elif boundary_type == 'boundary':
+            information_boundary = boundary
+        elif boundary_type == 'initial':
+            information_boundary = initial_boundary
     elif boundary_type == 'initial':
-        boundary_classes = classify_boundary(mesh, time_axis=time_axis)
-        initial_boundary = boundary[boundary_classes == 0]
+        boundary_classes = classify_boundary(mesh, time_axis=0)
+        information_boundary = boundary[boundary_classes == 0]
+        initial_boundary = None
     else:
+        information_boundary = boundary
         initial_boundary = None
 
     # 1. Generazione dei punti bulk sull'intero dominio
     bulk_points = sample_points_on_mesh_poisson_disk(mesh, bulk_n)
 
     # 2. Mappa di distanza geodetica su tutti i vertici
-    if boundary_type == "initial":
-        distance_map = get_geodesic_distance(mesh, initial_boundary)
-    elif boundary_type == "boundary":
-        distance_map = get_geodesic_distance(mesh, boundary)
-    elif boundary_type == "all":
-        if initial_boundary is not None:
-            distance_map = get_geodesic_distance(mesh, np.vstack((initial_boundary,boundary)))
-        else:
-            distance_map = get_geodesic_distance(mesh, boundary)
+    distance_map = get_geodesic_distance(mesh, information_boundary)
 
+    # Allo stato attuale la divisione è uniforme nella distanza
+    # Pertanto non lo è necessariamente nel numero di elementi per classe
     distance_map = distance_map[mesh.faces].min(axis=1)
     bins = np.linspace(0, 1, steps + 1)
     faces_class = np.clip(np.digitize(distance_map, bins), 0, steps)
@@ -367,7 +368,13 @@ def get_progressive_dataset(
     sched = list(np.linspace(0, epochs, steps + 1, dtype=int)[1:])
 
     # Indici per separare le classi
-    idxs = np.cumsum(np.unique(points_class, return_counts=True)[1])
+    idxs = np.cumsum(np.unique(points_class, return_counts=True)[1]).tolist()
+
+    # Gestione casi particolari
+    if len(idxs) < steps:
+        idxs += [idxs[-1]] * (steps - len(idxs))
+    elif len(idxs) > steps:
+        idxs = idxs[:steps]
 
     # Campionamento dei punti di bordo
     boundary_points = sample_points_on_boundary(mesh, boundary, boundary_n)

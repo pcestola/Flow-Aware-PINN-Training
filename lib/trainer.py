@@ -133,6 +133,30 @@ class TrainerStep():
         scaled_parts.insert(0,0)
         return scaled_parts
 
+    def divide_epochs_proportional(self, epochs: int, indices: list, minimo: int = 1):
+        
+        # Calcola quanti punti ha ogni step
+        counts = np.diff([0] + indices)
+        total = sum(counts)
+
+        # Calcola percentuali da conteggi
+        percentuali = 100 * np.array(counts) / total
+
+        # Assegna le epoche
+        raw = epochs * percentuali / 100.0
+        floored = np.floor(raw).astype(int)
+        floored = np.maximum(floored, minimo)
+
+        diff = epochs - floored.sum()
+        if diff > 0:
+            remainders = raw - floored
+            indices_max = np.argsort(-remainders)
+            for i in indices_max[:diff]:
+                floored[i] += 1
+
+        # Output: cumsum con 0 iniziale
+        return np.cumsum([0] + floored.tolist()).tolist()
+
     def train(self,
         bulk_data: Tuple[torch.Tensor],
         bdry_data: Tuple[torch.Tensor],
@@ -154,6 +178,8 @@ class TrainerStep():
             decomposition_epochs = self.divide_epochs_linear(epochs, steps)
         elif divide_mode == 'exponential':
             decomposition_epochs = self.divide_epochs_exponential_growth(epochs, steps)
+        elif divide_mode == 'proportional':
+            decomposition_epochs = self.divide_epochs_proportional(epochs, indices, minimo=100)
         decomposition_epochs[-1] += extra_epochs
 
         optimizer = torch.optim.Adam(self.pinn.parameters(), lr=lr_start)

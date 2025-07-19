@@ -133,9 +133,9 @@ class Burgers_1D(ResidualCalculator):
     def initial_condition(self, data):
         x = data[:,1:2]
         if isinstance(x,torch.Tensor):
-            return -torch.sin(math.pi*x)
+            return -torch.sin(math.pi*x), None
         else:
-            return -np.sin(np.pi*x)
+            return -np.sin(np.pi*x), None
     
     def boundary_condition(self, data):
         if isinstance(data,torch.Tensor):

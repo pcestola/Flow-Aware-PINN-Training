@@ -1,5 +1,0 @@
-
-Implementa un sistema che aggiorna automaticamente i pesi dei termini di loss durante il training, per esempio:
-- SoftAdapt (Heydari et al.)
-- GradNorm (Chen et al.)
-- NTK-based reweighting (Wang et al. 2021)
