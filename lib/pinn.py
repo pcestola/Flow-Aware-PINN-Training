@@ -5,21 +5,6 @@ import torch.nn as nn
 from typing import Tuple
 
 # GRADIENT
-def compute_gradient_norm(loss, model):
-    # Pulisce i gradienti
-    model.zero_grad()
-    # Calcola i gradienti del singolo termine
-    loss.backward(retain_graph=True)
-    
-    # Calcola la norma L2 di tutti i gradienti
-    total_norm = 0.0
-    for p in model.parameters():
-        if p.grad is not None:
-            param_norm = p.grad.detach().data.norm(2)
-            total_norm += param_norm.item() ** 2
-    total_norm = total_norm ** 0.5
-    return total_norm
-
 def gradient(f, variables):
     grad = f
     for var in variables:
@@ -105,12 +90,20 @@ class LaplaceEquation(ResidualCalculator):
 class EikonalEquation(ResidualCalculator):
     def __init__(self, c:float=1.0):
         super().__init__()
+        self.eps = 1
         self.c = c
 
     def compute_residual(self, u, x, y):
         ux = gradient(u, (x,))
         uy = gradient(u, (y,))
-        return ux**2 + uy**2 - self.c
+        if self.eps >= 0.0001:
+            uxx = gradient(u, (x,x))
+            uyy = gradient(u, (y,y))
+            residual = -self.eps * (uxx + uyy) + (1.0 + 0.5*torch.sin(2*math.pi*x)*torch.sin(2*math.pi*y))*torch.sqrt(ux**2 + uy**2) - 1.0
+            self.eps *= 0.99
+        else:
+            residual = (1.0 + 0.5*torch.sin(2*math.pi*x)*torch.sin(2*math.pi*y))*torch.sqrt(ux**2 + uy**2) - 1.0
+        return residual
     
     def boundary_condition(self, data):
         if isinstance(data,torch.Tensor):
@@ -119,6 +112,28 @@ class EikonalEquation(ResidualCalculator):
             return np.zeros((data.shape[0],1))
 
 # PINNACLE
+class WaveEquation_1D(ResidualCalculator):
+    def __init__(self, c:float=0.25):
+        self.c = c
+
+    def compute_residual(self, u, t, x):
+        u_tt = gradient(u, (t,t))
+        u_xx = gradient(u, (x,x))
+        return u_tt - self.c * u_xx
+
+    def initial_condition(self, data):
+        x = data[:,1:2]
+        if isinstance(x,torch.Tensor):
+            return torch.sin(math.pi*x)+0.5*torch.sin(4*math.pi*x), torch.zeros_like(x)
+        else:
+            return np.sin(np.pi*x)+0.5*np.sin(4*np.pi*x), np.zeros_like(x)
+    
+    def boundary_condition(self, data):
+        if isinstance(data,torch.Tensor):
+            return torch.zeros((data.shape[0],1))
+        else:
+            return np.zeros((data.shape[0],1))
+
 class Burgers_1D(ResidualCalculator):
     
     def __init__(self, c:float=0.01/math.pi):
@@ -155,12 +170,12 @@ class Poisson_2D_C(ResidualCalculator):
         y = data[:,1]
         if isinstance(x,torch.Tensor):
             condition = torch.zeros((data.shape[0],1))
-            mask = (torch.abs(x)>3.5) | (torch.abs(y)>3.5)
+            mask = (torch.abs(x)>3.8) | (torch.abs(y)>3.8)
             condition[mask] = 1.0
             return condition
         else:
             condition = np.zeros((data.shape[0],1))
-            mask = (np.abs(x)>3.5) | (np.abs(y)>3.5)
+            mask = (np.abs(x)>3.8) | (np.abs(y)>3.8)
             condition[mask] = 1.0
             return condition
 
@@ -191,51 +206,6 @@ class Poisson_2D_CG(ResidualCalculator):
             mask = (np.abs(x)>0.98) | (np.abs(y)>0.98)
             condition[mask] = 0.2
             return condition
-
-class Example(ResidualCalculator):
-    def __init__(self):
-        super().__init__()
-        self.omega = 4
-    
-    def compute_residual(self, u, x, y):
-        u_xx = gradient(u, (x,x))
-        u_yy = gradient(u, (y,y))
-        return u_xx + u_yy
-
-    def boundary_condition(self, data):
-        x = data[:,0]
-        y = data[:,1]
-        if isinstance(x,torch.Tensor):
-            return torch.sin(self.omega*torch.atan2(y,x))
-        else:
-            return np.sin(self.omega*np.arctan2(y,x))
-
-class Kuramoto_Shivashinsky(ResidualCalculator):
-    
-    def __init__(self, a:float=100/16, b:float=100/(16**2), c:float=100/(16**4)):
-        self.a = a
-        self.b = b
-        self.c = c
-
-    def compute_residual(self, u, t, x):
-        u_t = gradient(u, (t,))
-        u_x = gradient(u, (x,))
-        u_xx = gradient(u, (x,x))
-        u_xxxx = gradient(u, (x,x,x,x))
-        return u_t + self.a * u * u_x + self.b * u_xx + self.c * u_xxxx
-    
-    def initial_condition(self, data):
-        x = data[:,1:2]
-        if isinstance(x,torch.Tensor):
-            return torch.cos(x)*(1+torch.sin(x))
-        else:
-            return np.cos(x)*(1+np.sin(x))
-    
-    def boundary_condition(self, data):
-        if isinstance(data,torch.Tensor):
-            return torch.zeros((data.shape[0],1))
-        else:
-            return np.zeros((data.shape[0],1))
 
 class NS_2D_C(ResidualCalculator):
     def __init__(self, nu: float = 0.01):

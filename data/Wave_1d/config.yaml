@@ -1,19 +1,17 @@
-# config/default.yaml
 name: wave_1d
 
-# wave | heat | laplace | eikonal
 equation: "wave"
 
-# simple | siren
 model:
-  type: "simple"
+  type: "simple"  # simple | siren
   dims: [2, 32, 32, 32, 1]
 
 decomposition:
-  steps: 1
+  subdomains: 1
   time_axis: 0
-  type: "initial"
-  epochs_division: "exponential"
+  directed_axis: null
+  information_boundary: "initial"   # all | initial | spatial | directed
+  epochs_scheduling: "exponential"  # linear | exponential | proportional
   epochs_extra: 0
 
 mesh:

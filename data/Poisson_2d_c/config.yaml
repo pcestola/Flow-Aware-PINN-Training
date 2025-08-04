@@ -2,16 +2,16 @@ name: poisson_2d_c
 
 equation: "poisson_1"
 
-# simple | siren
 model:
-  type: "simple"
+  type: "simple"  # simple | siren
   dims: [2, 32, 32, 32, 1]
 
 decomposition:
-  steps: 1
-  time_axis: -1
-  type: "all"
-  epochs_division: "exponential"
+  subdomains: 1
+  time_axis: null
+  directed_axis: null
+  information_boundary: "spatial"   # all | initial | spatial | directed
+  epochs_scheduling: "exponential"  # linear | exponential | proportional
   epochs_extra: 1000
 
 mesh:
@@ -21,7 +21,7 @@ mesh:
 
 training:
   scheduler: false
-  epochs: 6000
+  epochs: 5000
   lr: 1e-2
   weights:
     bulk: 1.0

@@ -12,7 +12,8 @@ from lib.models import SimpleNN, SIREN
 from lib.trainer import TrainerStep
 from lib.pinn import (
     PINN, LaplaceEquation, Burgers_1D, WaveEquation, HeatEquation,
-    Poisson_2D_C, Poisson_2D_CG, NS_2D_C, NS_2D_CG
+    Poisson_2D_C, Poisson_2D_CG, NS_2D_C, NS_2D_CG, WaveEquation_1D,
+    EikonalEquation
 )
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
 from lib.gif_utils import generate_gif
@@ -38,19 +39,23 @@ def setup_logging(log_cfg, path, steps):
     logging.basicConfig(
         filename=log_file,
         level=getattr(logging, log_cfg["level"]),
-        format="[%(levelname)s] %(message)s"
+        format="%(asctime)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
 
 def get_equation(name:str):
     eqs = {
         'wave': WaveEquation,
+        'wave_2': WaveEquation_1D,
         'heat': HeatEquation,
         'laplace': LaplaceEquation,
         'poisson_1': Poisson_2D_C,
         'poisson_2': Poisson_2D_CG,
         'burger': Burgers_1D,
         'ns_1': NS_2D_C,
-        'ns_2': NS_2D_CG
+        'ns_2': NS_2D_CG,
+        'eikonal': EikonalEquation,
+        'eikonal_2': EikonalEquation
     }
     if name not in eqs:
         raise ValueError(f"Equazione sconosciuta: {name}")
@@ -95,7 +100,7 @@ def setup_experiment(cfg, args, run_id, seed):
         ckpt_dir = None
 
     if cfg["logging"]["enabled"]:
-        setup_logging(cfg["logging"], log_dir, cfg["decomposition"]["steps"])
+        setup_logging(cfg["logging"], log_dir, cfg["decomposition"]["subdomains"])
         logging.info(f"Esecuzione {run_id+1}/{args.repeat} con seed={seed}")
 
     if torch.cuda.is_available():
@@ -112,18 +117,18 @@ def setup_experiment(cfg, args, run_id, seed):
     return device, ckpt_dir, log_dir, save_dir
 
 def prepare_data(cfg, args, device):
-    mesh, bulk_points, boundary_points, initial_points, indices, scheduler = mesh_preprocessing(
+    mesh, bulk_points, boundary_points, initial_points, indices = mesh_preprocessing(
             path = os.path.join(args.path,'mesh.obj'),
             epochs          = cfg["training"]["epochs"],
-            steps           = cfg["decomposition"]["steps"],
+            steps           = cfg["decomposition"]["subdomains"],
             time_axis       = cfg["decomposition"]["time_axis"],
-            boundary_type   = cfg["decomposition"]["type"],
+            directed_axis   = cfg["decomposition"]["directed_axis"],
+            boundary_type   = cfg["decomposition"]["information_boundary"],
             bulk_n          = cfg["mesh"]["bulk_points"],
             boundary_n      = cfg["mesh"]["boundary_points"],
-            init_n          = cfg["mesh"]["initial_points"],
-            preview         = False
+            init_n          = cfg["mesh"]["initial_points"]
         )
-    
+
     equation = get_equation(cfg["equation"])
 
     # Bulk Data
@@ -192,22 +197,22 @@ def run_train(cfg, trainer, pinn, device, bulk_data, boundary_data, initial_data
         indices=indices,
         weights=cfg["training"]["weights"],
         epochs=int(cfg["training"]["epochs"]),
-        steps=int(cfg["decomposition"]["steps"]),
-        divide_mode=cfg["decomposition"]["epochs_division"],
+        steps=int(cfg["decomposition"]["subdomains"]),
+        divide_mode=cfg["decomposition"]["epochs_scheduling"],
         extra_epochs=cfg["decomposition"]["epochs_extra"],
         lr_start=float(cfg["training"]["lr"]),
         ckpt=cfg["checkpoint"]["enabled"],
-        #savepath=img_dir,
-        #mesh = mesh,
-        #time_axis = cfg["decomposition"]["time_axis"],
-        #boundary_type = cfg["decomposition"]["type"]
+        #savepath=save_dir,
+        #mesh=mesh,
+        #time_axis=0,
+        #boundary_type='all'
     )
     
     # Results
     if plot:
         solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
         solution = solution.detach().cpu().flatten().numpy()
-        visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["steps"]}'))
+        visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["subdomains"]}'))
 
     return flops, errors    
 
@@ -217,7 +222,7 @@ def main():
     cfg = load_config(os.path.join(args.path,'config.yaml'))
 
     if args.steps > 0:
-        cfg["decomposition"]["steps"] = args.steps
+        cfg["decomposition"]["subdomains"] = args.steps
 
     for run_id in range(args.repeat):
         seed = 42 + run_id
@@ -256,8 +261,12 @@ def main():
             mesh, indices,
             save_dir,
             plot=False)
+        
+        solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
+        solution = solution.detach().cpu().numpy().flatten()
+        visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["subdomains"]}'))
 
-        with open(os.path.join(log_dir,f'error_{cfg["decomposition"]["steps"]}.pkl'), "wb") as f:
+        with open(os.path.join(log_dir,f'error_{cfg["decomposition"]["subdomains"]}.pkl'), "wb") as f:
             pickle.dump((flops, errors), f)
 
 if __name__ == "__main__":

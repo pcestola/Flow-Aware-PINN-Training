@@ -1,59 +1,16 @@
 import torch
-import meshio
 import trimesh
 import numpy as np
 import pyvista as pv
 import networkx as nx
 import matplotlib.pyplot as plt
-from collections import defaultdict
 import point_cloud_utils as pcu
-from scipy.spatial import cKDTree
+
 from matplotlib import cm
+from scipy.spatial import cKDTree
 
-# https://fwilliams.info/point-cloud-utils/sections/mesh_sampling/#:~:text=at%20the%20points.-,Generating%20blue%2Dnoise%20random%20samples%20on%20a%20mesh,are%20separated%20by%20some%20radius.&text=Generating%20blue%20noise%20samples%20on,a%20target%20radius%20(right).
 
-'''
-    MESHIO
-'''
-def meshio_get_topological_boundary(mesh:meshio.Mesh, vertices=False):
-    edge_count = defaultdict(int)
-    for cell in mesh.cells[0].data:
-        n = len(cell)
-        for i in range(n):
-            edge = (cell[i],cell[(i+1)%n])
-            edge = tuple(sorted(edge))
-            edge_count[edge] += 1
-
-    boundary_edges = [edge for edge, count in edge_count.items() if count == 1]
-
-    if vertices:
-        return list(np.unique(np.array(boundary_edges).flatten()))
-    else:
-        return boundary_edges
-
-def meshio_classify_boundary(mesh:meshio.Mesh, time_axis:int):
-    minimum = np.min(mesh.points[:, time_axis])
-    classes = []
-
-    edges = get_topological_boundary(mesh)
-
-    for edge in edges:
-        p1 = mesh.points[edge[0]]
-        p2 = mesh.points[edge[1]]
-        t1, t2 = p1[time_axis], p2[time_axis]
-
-        if np.isclose(t1, minimum) and np.isclose(t2, minimum):
-            classes.append(0)
-        elif np.isclose(t1, t2):
-            classes.append(2)
-        else:
-            classes.append(1)
-
-    return classes
-
-'''
-    TRIMESH
-'''
+# Geometry
 def load_mesh(path):
     return trimesh.load(path, process=False)
 
@@ -65,30 +22,6 @@ def get_topological_boundary(mesh:trimesh.Trimesh) -> np.ndarray:
     _, idx, counts = np.unique(view, return_index=True, return_counts=True)
     boundary = edges[idx[counts == 1]]
     return boundary
-
-# NOTE: prima di navier stokes
-def classify_boundary_old(mesh:trimesh.Trimesh, time_axis:int):
-    
-    minimum = np.min(mesh.vertices[:, time_axis])
-    classes = []
-
-    edges = get_topological_boundary(mesh)
-
-    for edge in edges:
-        p1 = mesh.vertices[edge[0]]
-        p2 = mesh.vertices[edge[1]]
-        t1, t2 = p1[time_axis], p2[time_axis]
-
-        if np.isclose(t1, minimum) and np.isclose(t2, minimum):
-            classes.append(0)
-        elif np.isclose(t1, t2):
-            classes.append(2)
-        else:
-            classes.append(1)
-
-    classes = np.array(classes)
-
-    return classes
 
 def classify_boundary(mesh:trimesh.Trimesh, time_axis:int):
     
@@ -163,28 +96,6 @@ def progressive_domain_decomposition(
 
     return cls, sched
 
-def sample_points_on_mesh(mesh:trimesh.Trimesh, n:int) -> np.ndarray:
-    
-    tri = mesh.vertices[mesh.faces][:, :, :2]
-    v0, v1, v2 = tri[:, 0], tri[:, 1], tri[:, 2]
-    area = 0.5 * np.abs(
-        (v1[:,0]-v0[:,0])*(v2[:,1]-v0[:,1]) -
-        (v1[:,1]-v0[:,1])*(v2[:,0]-v0[:,0])
-    )
-
-    prob = area / area.sum()
-    idx = np.random.choice(len(tri), size=n, p=prob)
-    t0, t1, t2 = v0[idx], v1[idx], v2[idx]
-    u = np.random.rand(n,1)
-    v = np.random.rand(n,1)
-    o = u+v>1
-    u[o] = 1-u[o]
-    v[o] = 1-v[o]
-    w = 1-u-v
-    pts = t0*u + t1*v + t2*w
-
-    return pts
-
 def sample_points_on_mesh_poisson_disk(mesh:trimesh.Trimesh, num_samples:int, radius:float=None):
     
     #OLD: v = np.concatenate((mesh.vertices, np.zeros((mesh.vertices.shape[0],1))), axis=1)
@@ -241,107 +152,124 @@ def sample_points_on_boundary(mesh: trimesh.Trimesh, boundary: np.ndarray, n: in
 
     return all_points
 
+def boundary_point_normals_2d(mesh, topo_boundary, boundary_points,
+                              eps=1e-12, strict=True, vertex_tol=1e-9):
+    V = np.asarray(mesh.vertices)[:, :2]
+    F = np.asarray(mesh.faces, dtype=int)
+    P = np.asarray(boundary_points, dtype=float)
 
-def get_progressive_dataset_old(
-    mesh,
-    epochs: int = 100,
-    steps: int = 10,
-    time_axis: int = -1,
-    boundary_type: str = "all",
-    bulk_n: int = 1000,
-    boundary_n: int = 100,
-    init_n: int = 0,
-    preview=False):
-
-    boundary = get_topological_boundary(mesh)
-
-    if time_axis >= 0:
-        boundary_classes = classify_boundary(mesh, time_axis=time_axis)
-        initial_boundary = boundary[boundary_classes == 0]
-        boundary = boundary[boundary_classes == 1]
-    # NOTE: da scrivere meglio e generalizzare
-    elif boundary_type == 'initial':
-        boundary_classes = classify_boundary(mesh, time_axis=time_axis)
-        initial_boundary = boundary[boundary_classes == 0]
+    if isinstance(topo_boundary, np.ndarray) and topo_boundary.ndim == 2 and topo_boundary.shape[1] == 2:
+        E = topo_boundary.astype(int)
     else:
-        initial_boundary = None
+        E = np.concatenate([
+            np.stack([loop, np.roll(loop, -1)], axis=1) for loop in topo_boundary
+        ], axis=0).astype(int)
+    if E.size == 0:
+        raise ValueError("topo_boundary vuoto.")
 
-    # 1. Generazione dei punti bulk sull'intero dominio
-    bulk_points = sample_points_on_mesh_poisson_disk(mesh, bulk_n)
+    edge2faces = {}
+    for f_idx, (a, b, c) in enumerate(F):
+        for u, v in ((a, b), (b, c), (c, a)):
+            key = (u, v) if u < v else (v, u)
+            edge2faces.setdefault(key, []).append(f_idx)
 
-    # 2. Mappa di distanza geodetica su tutti i vertici
-    if boundary_type == "initial":
-        distance_map = get_geodesic_distance(mesh, initial_boundary)
-    elif boundary_type == "boundary":
-        distance_map = get_geodesic_distance(mesh, boundary)
-    elif boundary_type == "all":
-        if initial_boundary is not None:
-            distance_map = get_geodesic_distance(mesh, np.vstack((initial_boundary,boundary)))
+    A = V[E[:, 0]]; B = V[E[:, 1]]
+    EV = B - A
+    L2 = np.einsum('ij,ij->i', EV, EV)
+    good = L2 > eps
+    if not np.all(good):
+        EV[~good] = 0.0
+        L2[~good] = 1.0
+
+    T = EV / np.sqrt(L2)[:, None]
+    n_right = np.stack([T[:, 1], -T[:, 0]], axis=1)
+
+    N_edge = np.empty_like(n_right)
+    for m, (i, j) in enumerate(E):
+        key = (i, j) if i < j else (j, i)
+        faces = edge2faces.get(key, [])
+        if strict and len(faces) != 1:
+            raise ValueError(f"Edge {i}-{j}: {len(faces)} facce adiacenti (atteso 1).")
+        if len(faces) == 1:
+            f = faces[0]; tri = F[f]
+            k = tri[~np.isin(tri, [i, j])][0]
+            e = EV[m]
+            cross_z = e[0]*(V[k,1]-V[i,1]) - e[1]*(V[k,0]-V[i,0])
+            N_edge[m] = n_right[m] if cross_z > 0 else -n_right[m]
         else:
-            distance_map = get_geodesic_distance(mesh, boundary)
+            N_edge[m] = n_right[m]
 
-    # 3. Assegnazione della distanza ai punti: proiezione sul vertice più vicino
-    tree = cKDTree(mesh.vertices[:, :2])
-    _, nn_idx = tree.query(bulk_points, k=1)
-    point_distances = distance_map[nn_idx]
+    PA = P[:, None, :] - A[None, :, :]
+    t = np.einsum('nmi,mi->nm', PA, EV) / L2[None, :]
+    t_clamped = np.clip(t, 0.0, 1.0)
+    Pproj = A[None, :, :] + t_clamped[..., None] * EV[None, :, :]
 
-    # Classificazione in steps intervallati
-    bins = np.linspace(0, 1, steps + 1)
-    cls = np.clip(np.digitize(point_distances, bins), 0, steps)
+    # >>> FIX QUI <<<
+    delta = P[:, None, :] - Pproj
+    d2 = np.einsum('nmi,nmi->nm', delta, delta)
+    # <<< FIX QUI >>>
 
-    # Ordina i punti in base alla classe
-    sorted_idx = np.argsort(cls)
-    bulk_points = bulk_points[sorted_idx]
-    cls = cls[sorted_idx]
+    edge_idx = np.argmin(d2, axis=1)
+    normals = N_edge[edge_idx].copy()
 
-    # Scheduler lineare
-    sched = list(np.linspace(0, epochs, steps + 1, dtype=int)[1:])
+    vert2edges = {}
+    for m, (i, j) in enumerate(E):
+        vert2edges.setdefault(int(i), []).append(m)
+        vert2edges.setdefault(int(j), []).append(m)
 
-    # Indici per separare le classi
-    idxs = np.cumsum(np.unique(cls, return_counts=True)[1])
+    t_best = t[np.arange(P.shape[0]), edge_idx]
+    near_i = np.isclose(t_best, 0.0, atol=vertex_tol)
+    near_j = np.isclose(t_best, 1.0, atol=vertex_tol)
+    if np.any(near_i) or np.any(near_j):
+        for idx_point in np.where(near_i | near_j)[0]:
+            m = edge_idx[idx_point]
+            i, j = E[m]
+            v = i if near_i[idx_point] else j
+            inc = vert2edges.get(int(v), [])
+            if inc:
+                n_avg = N_edge[inc].mean(axis=0)
+                nl = np.linalg.norm(n_avg)
+                if nl > eps:
+                    normals[idx_point] = n_avg / nl
 
-    # Campionamento dei punti di bordo
-    boundary_points = sample_points_on_boundary(mesh, boundary, boundary_n)
-
-    # Campionamento iniziale se richiesto
-    if init_n > 0 and initial_boundary is not None:
-        initial_points = sample_points_on_boundary(mesh, initial_boundary, init_n)
-    else:
-        initial_points = None
-
-    return bulk_points, boundary_points, initial_points, idxs, sched
-
+    return normals
 
 def get_progressive_dataset(
     mesh,
     epochs: int = 100,
     steps: int = 10,
-    time_axis: int = -1,
+    time_axis: int = None,
+    directed_axis: int = None,
     boundary_type: str = "all",
     bulk_n: int = 1000,
     boundary_n: int = 100,
-    init_n: int = 0,
-    preview=False):
+    initial_n: int = 0):
 
     boundary = get_topological_boundary(mesh)
 
-    if time_axis >= 0:
+    # Get Spatial, Initial, Information Boundaries
+    if time_axis is not None:
         boundary_classes = classify_boundary(mesh, time_axis=time_axis)
         initial_boundary = boundary[boundary_classes == 0]
-        boundary = boundary[boundary_classes == 1]
+        spatial_boundary = boundary[boundary_classes == 1]
         if boundary_type == 'all':
-            information_boundary = np.vstack((initial_boundary,boundary))
-        elif boundary_type == 'boundary':
-            information_boundary = boundary
+            information_boundary = np.vstack((initial_boundary,spatial_boundary))
+        elif boundary_type == 'spatial':
+            information_boundary = spatial_boundary
         elif boundary_type == 'initial':
             information_boundary = initial_boundary
-    elif boundary_type == 'initial':
-        boundary_classes = classify_boundary(mesh, time_axis=0)
-        information_boundary = boundary[boundary_classes == 0]
+    elif directed_axis is not None:
+        boundary_classes = classify_boundary(mesh, time_axis=directed_axis)
         initial_boundary = None
+        spatial_boundary = boundary
+        if boundary_type == 'all' or boundary_type == 'spatial':
+            information_boundary = boundary
+        elif boundary_type == 'directed':
+            information_boundary = boundary[boundary_classes == 0]
     else:
-        information_boundary = boundary
         initial_boundary = None
+        spatial_boundary = boundary
+        information_boundary = boundary
 
     # 1. Generazione dei punti bulk sull'intero dominio
     bulk_points = sample_points_on_mesh_poisson_disk(mesh, bulk_n)
@@ -377,85 +305,18 @@ def get_progressive_dataset(
         idxs = idxs[:steps]
 
     # Campionamento dei punti di bordo
-    boundary_points = sample_points_on_boundary(mesh, boundary, boundary_n)
+    boundary_points = sample_points_on_boundary(mesh, spatial_boundary, boundary_n)
 
     # Campionamento iniziale se richiesto
-    if init_n > 0 and initial_boundary is not None:
-        initial_points = sample_points_on_boundary(mesh, initial_boundary, init_n)
+    if initial_boundary is not None:
+        initial_points = sample_points_on_boundary(mesh, initial_boundary, initial_n)
     else:
         initial_points = None
 
-    return bulk_points, boundary_points, initial_points, idxs, sched
+    return bulk_points, boundary_points, initial_points, idxs
 
 
-def get_progressive_dataset_bhv(
-    mesh,
-    epochs: int = 100,
-    steps: int = 10,
-    time_axis: int = -1,
-    boundary_type: str = "all",
-    bulk_n: int = 1000,
-    boundary_n: int = 100,
-    init_n: int = 0,
-    preview=False):
-
-    assert boundary_type in {"initial", "boundary", "all"}
-
-    boundary = get_topological_boundary(mesh)
-
-    if time_axis >= 0:
-        boundary_classes = classify_boundary(mesh, time_axis=time_axis)
-        initial_boundary = boundary[boundary_classes == 0]
-        boundary = boundary[boundary_classes == 1]
-    else:
-        initial_boundary = None
-
-    # 1. Sample bulk points
-    bulk_points = sample_points_on_mesh_poisson_disk(mesh, bulk_n)
-
-    # 2. Compute geodesic distance
-    if boundary_type == "all":
-        ref_boundary = boundary if initial_boundary is None else np.vstack((initial_boundary, boundary))
-    elif boundary_type == "boundary":
-        ref_boundary = boundary
-    elif boundary_type == "initial":
-        ref_boundary = initial_boundary
-    distance_map = get_geodesic_distance(mesh, ref_boundary)
-
-    # 3. Classify faces by min vertex distance
-    bins = np.linspace(0, 1, steps + 1)
-    faces_distance = distance_map[mesh.faces].min(axis=1)
-    faces_class = np.clip(np.digitize(faces_distance, bins), 0, steps) - 1
-
-    # 4. Classify points using BVH
-    _, _, face_ids = mesh.nearest.on_surface(np.hstack((bulk_points, np.zeros((bulk_points.shape[0], 1)))))
-    cls = faces_class[face_ids]
-
-    # 5. Sort points by class
-    sorted_idx = np.argsort(cls)
-    bulk_points = bulk_points[sorted_idx]
-    cls = cls[sorted_idx]
-    counts = np.bincount(cls, minlength=steps+1)
-    idxs = np.cumsum(counts[counts > 0])
-
-    # Scheduler lineare
-    sched = list(np.linspace(0, epochs, steps + 1, dtype=int)[1:])
-
-    # Campionamento dei punti di bordo
-    boundary_points = sample_points_on_boundary(mesh, boundary, boundary_n)
-
-    # Campionamento iniziale se richiesto
-    if init_n > 0 and initial_boundary is not None:
-        initial_points = sample_points_on_boundary(mesh, initial_boundary, init_n)
-    else:
-        initial_points = None
-
-    return bulk_points, boundary_points, initial_points, idxs, sched
-
-
-'''
-    GRAPHIC
-'''
+# Drawing
 def visualize_boundary(mesh:trimesh.Trimesh, boundary_edges:list, classes:list=None):
 
     #OLD: points_3d = np.column_stack((mesh.vertices, np.zeros(len(mesh.vertices))))
@@ -539,9 +400,8 @@ def visualize_scalar_field(mesh, s, face=False, cmap='bwr', save_path=None):
     else:
         plt.show()
 
-'''
-    EXTRA
-'''
+
+# Extra  
 def get_points_classes(
     x, y,
     mesh,
@@ -585,38 +445,33 @@ def get_points_classes(
     return cls
 
 
-'''
-    MAIN
-'''
+# Main
 def mesh_preprocessing(
         path:str,
         epochs:int,
         steps:int,
         time_axis:int,
+        directed_axis:int,
         boundary_type:str,
         bulk_n:int,
         boundary_n:int,
-        init_n:int,
-        preview=False):
+        init_n:int):
 
     mesh = trimesh.load(path, process=False)
 
-    bulk_points, boundary_points, initial_points, idxs, scheduler = get_progressive_dataset(
+    bulk_points, boundary_points, initial_points, idxs = get_progressive_dataset(
         mesh,
         epochs,
         steps,
         time_axis,
+        directed_axis,
         boundary_type,
         bulk_n,
         boundary_n,
-        init_n,
-        preview
+        init_n
     )
-
-    if preview:
-        visualize_dataset(bulk_points, boundary_points, initial_points, idxs)
     
-    return mesh, bulk_points, boundary_points, initial_points, idxs, scheduler
+    return mesh, bulk_points, boundary_points, initial_points, idxs
     
 if __name__ == '__main__':
-    mesh_preprocessing('meshes/holes.obj',preview=True)
+    mesh_preprocessing('meshes/holes.obj')

@@ -1,0 +1,37 @@
+name: wave_1d
+
+equation: "wave_2"
+
+model:
+  type: "simple"  # simple | siren
+  dims: [2, 32, 32, 32, 1]
+
+decomposition:
+  subdomains: 1
+  time_axis: 0
+  directed_axis: null
+  information_boundary: "initial"   # all | initial | spatial | directed
+  epochs_scheduling: "exponential"  # linear | exponential | proportional
+  epochs_extra: 0
+
+mesh:
+  bulk_points: 1500
+  boundary_points: 160
+  initial_points: 40
+
+training:
+  scheduler: false
+  epochs: 10000
+  lr: 1e-2
+  weights:
+    bulk: 1.0
+    boundary: 1.0
+    initial: 1.0
+
+checkpoint:
+  enabled: false
+  interval: 100
+
+logging:
+  enabled: true
+  level: "INFO"

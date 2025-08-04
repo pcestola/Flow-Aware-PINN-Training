@@ -1,12 +1,6 @@
-.old
-.old2
-results
-lib/meshes_old.py
-run.sh
-analyze.py
-config/personal
-meshes/personal
-.PINNacle
-.PINNacle_2
-.old
 .idea
+images
+results
+v2
+analyze.py
+run_all.sh

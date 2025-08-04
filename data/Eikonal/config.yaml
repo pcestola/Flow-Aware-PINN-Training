@@ -1,0 +1,37 @@
+name: eikonal
+
+equation: "eikonal"
+
+model:
+  type: "simple"  # simple | siren
+  dims: [2, 32, 32, 32, 1]
+
+decomposition:
+  subdomains: 1
+  time_axis: null
+  directed_axis: null
+  information_boundary: "spatial"   # all | initial | spatial | directed
+  epochs_scheduling: "exponential"  # linear | exponential | proportional
+  epochs_extra: 1000
+
+mesh:
+  bulk_points: 2000
+  boundary_points: 750
+  initial_points: 0
+
+training:
+  scheduler: false
+  epochs: 5000
+  lr: 1e-2
+  weights:
+    bulk: 1.0
+    boundary: 10.0
+    initial: 1.0
+
+checkpoint:
+  enabled: false
+  interval: 100
+
+logging:
+  enabled: true
+  level: "INFO"

@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn as nn
 
+# MLP
 class SimpleNN(nn.Module):
     def __init__(self, dimensions, xmin, xmax):
         super(SimpleNN, self).__init__()
@@ -27,7 +28,7 @@ class SimpleNN(nn.Module):
         x = self.normalize_input(x)
         return self.fc(x)
     
-
+# SIREN MLP
 class Sine(nn.Module):
     def __init__(self, omega_0=1.0):
         super().__init__()

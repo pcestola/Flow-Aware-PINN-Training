@@ -3,15 +3,16 @@ name: poisson_2d_cg
 equation: "poisson_2"
 
 model:
-  type: "simple"
+  type: "simple"  # simple | siren
   dims: [2, 32, 32, 32, 1]
 
 decomposition:
-  steps: 1
-  time_axis: -1
-  type: "all"
-  epochs_division: "linear"
-  epochs_extra: 0
+  subdomains: 1
+  time_axis: null
+  directed_axis: null
+  information_boundary: "spatial"   # all | initial | spatial | directed
+  epochs_scheduling: "exponential"  # linear | exponential | proportional
+  epochs_extra: 2000
 
 mesh:
   bulk_points: 2000
@@ -20,11 +21,11 @@ mesh:
 
 training:
   scheduler: false
-  epochs: 6000
-  lr: 1e-2
+  epochs: 5000
+  lr: 1e-1
   weights:
     bulk: 1.0
-    boundary: 10.0
+    boundary: 1.0
     initial: 1.0
 
 checkpoint:
