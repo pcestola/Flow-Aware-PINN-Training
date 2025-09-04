@@ -16,7 +16,7 @@ from lib.pinn import (
     EikonalEquation
 )
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
-from lib.gif_utils import generate_gif
+#from lib.gif_utils import generate_gif
 #from lib.plotter import Plotter
 
 
@@ -262,9 +262,9 @@ def main():
             save_dir,
             plot=False)
         
-        solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
-        solution = solution.detach().cpu().numpy().flatten()
-        visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["subdomains"]}'))
+        #solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
+        #solution = solution.detach().cpu().numpy().flatten()
+        #visualize_scalar_field(mesh, solution, save_path=os.path.join(save_dir,f'solution_{cfg["decomposition"]["subdomains"]}'))
 
         with open(os.path.join(log_dir,f'error_{cfg["decomposition"]["subdomains"]}.pkl'), "wb") as f:
             pickle.dump((flops, errors), f)

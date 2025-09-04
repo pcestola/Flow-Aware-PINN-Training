@@ -95,7 +95,7 @@ class TrainerStep():
         decomposition_epochs[-1] += extra_epochs
 
         optimizer = torch.optim.Adam(self.pinn.parameters(), lr=lr_start)
-        scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=0.00001, total_iters=decomposition_epochs[-1])
+        scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=0.01, total_iters=decomposition_epochs[-1])
 
         self.logger.info(f"{'Epoch':>5} {'Step':>6} {'Error':>12} {'Total loss':>12} {'Bulk Loss':>12} {'Boundary Loss':>15} {'Initial Loss':>13} {'Learning rate':>14}")
 
