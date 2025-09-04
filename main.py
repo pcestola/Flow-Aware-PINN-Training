@@ -12,12 +12,9 @@ from lib.models import SimpleNN, SIREN
 from lib.trainer import TrainerStep
 from lib.pinn import (
     PINN, LaplaceEquation, Burgers_1D, WaveEquation, HeatEquation,
-    Poisson_2D_C, Poisson_2D_CG, NS_2D_C, NS_2D_CG, WaveEquation_1D,
-    EikonalEquation
+    Poisson_2D_C, NS_2D_C, NS_2D_CG, WaveEquation_1D, EikonalEquation
 )
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
-#from lib.gif_utils import generate_gif
-#from lib.plotter import Plotter
 
 
 # ---------------- UTILS ---------------- #
@@ -50,7 +47,6 @@ def get_equation(name:str):
         'heat': HeatEquation,
         'laplace': LaplaceEquation,
         'poisson_1': Poisson_2D_C,
-        'poisson_2': Poisson_2D_CG,
         'burger': Burgers_1D,
         'ns_1': NS_2D_C,
         'ns_2': NS_2D_CG,
@@ -201,11 +197,7 @@ def run_train(cfg, trainer, pinn, device, bulk_data, boundary_data, initial_data
         divide_mode=cfg["decomposition"]["epochs_scheduling"],
         extra_epochs=cfg["decomposition"]["epochs_extra"],
         lr_start=float(cfg["training"]["lr"]),
-        ckpt=cfg["checkpoint"]["enabled"],
-        #savepath=save_dir,
-        #mesh=mesh,
-        #time_axis=0,
-        #boundary_type='all'
+        ckpt=cfg["checkpoint"]["enabled"]
     )
     
     # Results
@@ -241,10 +233,6 @@ def main():
         # Costruzione PINN
         pinn = PINN(network, equation)
         pinn.to(device)
-
-        # Plotter
-        # plotter = Plotter(network)
-        # plotter.prepare()
 
         # Trainer
         trainer = TrainerStep(

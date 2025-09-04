@@ -179,34 +179,6 @@ class Poisson_2D_C(ResidualCalculator):
             condition[mask] = 1.0
             return condition
 
-class Poisson_2D_CG(ResidualCalculator):
-    def __init__(self):
-        super().__init__()
-        self.mu1 = 1.0
-        self.mu2 = 4.0
-        self.A = 10.0
-        self.k = 8.0
-    
-    def compute_residual(self, u, x, y):
-        u_xx = gradient(u, (x,x))
-        u_yy = gradient(u, (y,y))
-        f = self.A*(self.mu1**2 + self.mu2**2 + x**2 + y**2)*torch.sin(self.mu1*torch.pi*x)*torch.sin(self.mu2*torch.pi*y)
-        return - u_xx - u_yy + self.k**2*u - f
-
-    def boundary_condition(self, data):
-        x = data[:,0]
-        y = data[:,1]
-        if isinstance(x,torch.Tensor):
-            condition = torch.ones((data.shape[0],1))
-            mask = (torch.abs(x)>0.98) | (torch.abs(y)>0.98)
-            condition[mask] = 0.2
-            return condition
-        else:
-            condition = np.ones((data.shape[0],1))
-            mask = (np.abs(x)>0.98) | (np.abs(y)>0.98)
-            condition[mask] = 0.2
-            return condition
-
 class NS_2D_C(ResidualCalculator):
     def __init__(self, nu: float = 0.01):
         super().__init__()
