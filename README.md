@@ -1,4 +1,4 @@
-# Progressive Domain Training for Physics-Informed Neural Networks (PINNs)
+# Flow-Aware-Training for Physics-Informed Neural Networks (PINNs)
 
 ## Examples
 
