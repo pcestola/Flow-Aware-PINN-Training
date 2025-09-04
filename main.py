@@ -258,20 +258,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-''' Results NS
-solution = pinn.network(torch.tensor(mesh.vertices[:,:2], dtype=torch.float32, device=device))
-solution = solution.detach().cpu().numpy()
-vel = np.sqrt(solution[:,0]**2+solution[:,1]**2).flatten()
-visualize_scalar_field(mesh, vel, save_path=os.path.join(save_dir,f'velocity_{cfg["decomposition"]["steps"]}'))
-pres = solution[:,2].flatten()
-visualize_scalar_field(mesh, pres, save_path=os.path.join(save_dir,f'pression_{cfg["decomposition"]["steps"]}'))
-'''
-
-#generate_gif(img_dir, save_dir, cfg["decomposition"]["steps"])
