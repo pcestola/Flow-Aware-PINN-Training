@@ -24,28 +24,6 @@ class ResidualCalculator:
     def boundary_condition(self, data):
         raise NotImplementedError("PDE residual not implemented")
 
-class WaveEquation(ResidualCalculator):
-    def __init__(self, c:float=1.0):
-        self.c = c
-
-    def compute_residual(self, u, t, x):
-        u_tt = gradient(u, (t,t))
-        u_xx = gradient(u, (x,x))
-        return u_tt - self.c**2 * u_xx
-
-    def initial_condition(self, data):
-        x = data[:,1:2]
-        if isinstance(x,torch.Tensor):
-            return torch.exp(-4*x**2), torch.zeros_like(x)
-        else:
-            return np.exp(-4*x**2), np.zeros_like(x)
-    
-    def boundary_condition(self, data):
-        if isinstance(data,torch.Tensor):
-            return torch.zeros((data.shape[0],1))
-        else:
-            return np.zeros((data.shape[0],1))
-
 class HeatEquation(ResidualCalculator):
     def __init__(self, alpha:float=1.0):
         self.alpha = alpha
@@ -113,20 +91,20 @@ class EikonalEquation(ResidualCalculator):
 
 # PINNACLE
 class WaveEquation_1D(ResidualCalculator):
-    def __init__(self, c:float=0.25):
+    def __init__(self, c:float=1.0):
         self.c = c
 
     def compute_residual(self, u, t, x):
         u_tt = gradient(u, (t,t))
         u_xx = gradient(u, (x,x))
-        return u_tt - self.c * u_xx
+        return u_tt - self.c**2 * u_xx
 
     def initial_condition(self, data):
         x = data[:,1:2]
         if isinstance(x,torch.Tensor):
-            return torch.sin(math.pi*x)+0.5*torch.sin(4*math.pi*x), torch.zeros_like(x)
+            return torch.exp(-4*x**2), torch.zeros_like(x)
         else:
-            return np.sin(np.pi*x)+0.5*np.sin(4*np.pi*x), np.zeros_like(x)
+            return np.exp(-4*x**2), np.zeros_like(x)
     
     def boundary_condition(self, data):
         if isinstance(data,torch.Tensor):

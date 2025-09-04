@@ -11,8 +11,8 @@ import numpy as np
 from lib.models import SimpleNN, SIREN
 from lib.trainer import TrainerStep
 from lib.pinn import (
-    PINN, LaplaceEquation, Burgers_1D, WaveEquation, HeatEquation,
-    Poisson_2D_C, NS_2D_C, NS_2D_CG, WaveEquation_1D, EikonalEquation
+    PINN, LaplaceEquation, Burgers_1D, WaveEquation_1D, HeatEquation,
+    Poisson_2D_C, NS_2D_C, NS_2D_CG, EikonalEquation
 )
 from lib.meshes import mesh_preprocessing, visualize_scalar_field
 
@@ -42,8 +42,7 @@ def setup_logging(log_cfg, path, steps):
 
 def get_equation(name:str):
     eqs = {
-        'wave': WaveEquation,
-        'wave_2': WaveEquation_1D,
+        'wave': WaveEquation_1D,
         'heat': HeatEquation,
         'laplace': LaplaceEquation,
         'poisson_1': Poisson_2D_C,
